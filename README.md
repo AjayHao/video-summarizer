@@ -2,46 +2,206 @@
 
 🎬 将 B 站/YouTube 视频转换为结构化 Notion 风格总结
 
-## 快速开始
+**版本:** v1.0.1  
+**支持:** Plan A (字幕) + Plan B (语音转录)  
+**更新:** 2026-03-28 - 合并快速参考，优化文档结构
+
+---
+
+## 🚀 快速开始
+
+### 1. 扫码登录（首次使用）
 
 ```bash
-# 1. 获取视频元数据
-~/.openclaw/skills/video-summarizer/scripts/fetch.sh "https://www.bilibili.com/video/BVxxx"
+# 获取 B 站 Cookies
+~/.openclaw/skills/video-summarizer/scripts/bili-login.sh
 
-# 2. 使用模板生成总结
-# 复制 templates/summary.md 并填充内容
+# 扫码后 Cookies 有效期约 90 天
 ```
 
-## 依赖
+### 2. 检查配置
 
-- `yt-dlp` - 视频元数据获取
-- `jq` - JSON 解析
-- `bash` - 脚本运行
-
-## 输出示例
-
-查看 `templates/summary.md` 了解完整格式。
-
-## 截图服务
-
-视频帧截图使用 BibiGPT 服务：
-```
-https://bibigpt-apps.chatvid.ai/screenshots/{platform}/{videoId}/{timestamp}.jpg
+```bash
+# 检查所有配置是否就绪
+~/.openclaw/skills/video-summarizer/scripts/check-config.sh
 ```
 
-## 文件结构
+### 3. 处理视频
 
+```bash
+# 基础用法
+~/.openclaw/skills/video-summarizer/scripts/video-summarize.sh \
+    "视频 URL" \
+    /tmp/output
+
+# 详细日志模式
+~/.openclaw/skills/video-summarizer/scripts/video-summarize.sh \
+    "视频 URL" \
+    /tmp/output \
+    --verbose
+
+# 保留视频文件
+~/.openclaw/skills/video-summarizer/scripts/video-summarize.sh \
+    "视频 URL" \
+    /tmp/output \
+    --keep-video
+
+# 自动推送到 Notion
+~/.openclaw/skills/video-summarizer/scripts/video-summarize.sh \
+    "视频 URL" \
+    /tmp/output \
+    --push
+
+# 从中断点恢复
+~/.openclaw/skills/video-summarizer/scripts/video-summarize.sh \
+    "视频 URL" \
+    /tmp/output \
+    --resume
 ```
-video-summarizer/
-├── SKILL.md           # 技能说明
-├── README.md          # 本文件
-├── templates/
-│   └── summary.md     # Markdown 模板
-└── scripts/
-    └── fetch.sh       # 元数据获取脚本
+
+### 4. 推送到 Notion
+
+```bash
+python3 ~/.openclaw/skills/video-summarizer/scripts/push-to-notion.py \
+    /tmp/output/summary.md
 ```
 
 ---
 
-**版本:** 1.0  
-**创建:** 2026-03-22
+## 📋 命令行选项
+
+| 选项 | 说明 | 默认 |
+|------|------|------|
+| `--verbose`, `-v` | 详细日志 | 关闭 |
+| `--keep-video` | 保留视频/音频 | 清理 |
+| `--push` | 自动推送 Notion | 手动 |
+| `--resume` | 从中断恢复 | 从头开始 |
+
+---
+
+## 🎯 Plan A vs Plan B
+
+| | Plan A | Plan B |
+|--|--------|--------|
+| **触发** | 有字幕 | 无字幕 |
+| **来源** | 官方/自动字幕 | 语音转录 |
+| **速度** | 快（1-2 分钟） | 较慢（3-5 分钟） |
+| **准确率** | 高（90%+） | 中（80-90%） |
+
+---
+
+## 📁 输出文件结构
+
+```
+output/
+├── summary.md              # 📝 最终总结（主要成果）
+├── screenshot_urls.txt     # 🔗 截图 OSS 链接
+├── metadata.json           # 📊 视频元数据
+├── transcript.txt          # 📄 纯文本字幕
+├── screenshots/            # 📸 截图原图（本地备份）
+└── *.log                   # 📋 日志文件（verbose 模式）
+```
+
+---
+
+## 📊 OSS 路径规范
+
+格式：`/screenshots/<平台>/<视频 ID>_<时间戳>/`
+
+| 平台 | 示例 |
+|------|------|
+| bilibili | `/screenshots/bilibili/BV1eTPEzNEqf_20260326_010000/` |
+| douyin | `/screenshots/douyin/7234567890_20260326_010000/` |
+| xhs | `/screenshots/xhs/abc123_20260326_010000/` |
+| youtube | `/screenshots/youtube/dQw4w9WgXcQ_20260326_010000/` |
+| wxvideo | `/screenshots/wxvideo/123456_20260326_010000/` |
+
+---
+
+## 🔧 故障排查
+
+### Cookies 过期
+
+```bash
+# 扫码更新
+./bili-login.sh
+```
+
+### 配置检查
+
+```bash
+# 运行检查
+./check-config.sh
+```
+
+### 查看详细日志
+
+```bash
+# 使用 verbose 模式
+./video-summarize.sh "URL" /tmp/output --verbose
+
+# 查看日志文件
+cat /tmp/output/oss_upload.log
+cat /tmp/output/ai_analysis.log
+```
+
+---
+
+## 🎨 模板修改
+
+**位置：** `templates/summary.md`
+
+**示例：添加新章节**
+
+```markdown
+## 🆕 新增章节
+
+这里是新章节内容...
+
+---
+```
+
+**测试：**
+
+```bash
+./video-summarize.sh "URL" /tmp/test
+cat /tmp/test/summary.md
+```
+
+---
+
+## 📂 项目文件结构
+
+```
+video-summarizer/
+├── SKILL.md                  # 完整技能文档
+├── README.md                 # 快速入门（本文档）
+├── prompt.json               # AI 提示词配置
+├── scripts/
+│   ├── video-summarize.sh    # 主流程（Plan A/B 自动）
+│   ├── upload-to-oss.py      # OSS 图床上传
+│   ├── push-to-notion.py     # Notion 推送
+│   ├── analyze-subtitles-ai.py # AI 分析
+│   ├── download-audio.sh     # Plan B: 音频下载
+│   ├── transcribe-audio.py   # Plan B: 语音转录
+│   ├── check-config.sh       # 配置检查
+│   ├── bili-login.sh         # B 站扫码登录
+│   └── convert-bili-cookie.py # Cookies 格式转换
+└── templates/
+    ├── summary.md            # 总结文档模板
+    └── README.md             # 模板使用说明
+```
+
+---
+
+## 📞 更多文档
+
+- **技能文档：** [SKILL.md](SKILL.md) - 完整架构、配置详解、优化方向
+- **提示词配置：** [prompt.json](prompt.json) - AI 分析参数
+- **模板说明：** [templates/README.md](templates/README.md) - 模板变量详解
+
+---
+
+**版本:** v1.0.1  
+**发布:** 2026-03-28  
+**维护人:** Ajay Hao

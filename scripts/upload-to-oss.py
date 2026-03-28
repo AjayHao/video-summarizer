@@ -3,6 +3,16 @@
 阿里云 OSS 图床上传脚本
 用于 video-summarizer 技能，自动上传截图到阿里云 OSS
 
+路径规范：
+/screenshots/<平台名>/<视频 ID>/<截图文件>
+
+支持平台：
+- bilibili (B 站)
+- douyin (抖音)
+- xhs (小红书)
+- youtube (YouTube)
+- wxvideo (微信视频)
+
 支持：
 1. 公开读 Bucket：直接返回永久访问链接
 2. 私有 Bucket：返回签名 URL（默认 2 小时有效期）
@@ -10,6 +20,7 @@
 
 import os
 import sys
+import re
 import argparse
 from pathlib import Path
 
@@ -28,7 +39,50 @@ if not all([ALIYUN_OSS_AK, ALIYUN_OSS_SK, ALIYUN_OSS_BUCKET]):
     sys.exit(1)
 
 import oss2
-import time
+
+
+# 平台识别规则
+PLATFORM_PATTERNS = {
+    'bilibili': [
+        r'bilibili\.com/video/(BV\w+)',
+        r'bilibili\.com/video/(av\d+)',
+    ],
+    'douyin': [
+        r'douyin\.com/video/(\d+)',
+        r'iesdouyin\.com/share/video/(\d+)',
+    ],
+    'xhs': [
+        r'xiaohongshu\.com/discovery/item/(\w+)',
+        r'xhslink\.com/(\w+)',
+    ],
+    'youtube': [
+        r'youtube\.com/watch\?v=([\w-]+)',
+        r'youtu\.be/([\w-]+)',
+    ],
+    'wxvideo': [
+        r'channels\.wechat\.com/mp/newfeed/(\d+)',
+        r'tencent\.com/video/(\w+)',
+    ],
+}
+
+
+def detect_platform(video_url: str) -> tuple:
+    """
+    从视频 URL 识别平台和视频 ID
+    
+    Returns:
+        tuple: (platform, video_id) 或 (None, None)
+    """
+    for platform, patterns in PLATFORM_PATTERNS.items():
+        for pattern in patterns:
+            match = re.search(pattern, video_url)
+            if match:
+                video_id = match.group(1)
+                # 清理视频 ID，移除特殊字符
+                video_id = re.sub(r'[^a-zA-Z0-9_-]', '', video_id)
+                return platform, video_id
+    
+    return None, None
 
 
 def upload_to_oss(local_file_path: str, remote_key: str = None, public: bool = False, expires: int = 7200) -> dict:
@@ -90,7 +144,7 @@ def upload_screenshots(screenshots_dir: str, prefix: str = "screenshots/", publi
     
     Args:
         screenshots_dir: 截图目录路径
-        prefix: OSS 存储路径前缀
+        prefix: OSS 存储路径前缀（格式：screenshots/<平台>/<视频 ID>/）
         public: 是否返回公开 URL
     
     Returns:
@@ -114,7 +168,7 @@ def upload_screenshots(screenshots_dir: str, prefix: str = "screenshots/", publi
     
     results = []
     for img_file in image_files:
-        # 构建远程键名（包含 screenshots 目录，使用正斜杠）
+        # 构建远程键名（使用正斜杠）
         remote_key = f"{prefix}{img_file.name}".replace('\\', '/')
         
         print(f"📤 上传：{img_file.name} ...", file=sys.stderr)
@@ -139,13 +193,75 @@ def upload_screenshots(screenshots_dir: str, prefix: str = "screenshots/", publi
     return results
 
 
+def build_prefix(video_url: str = None, metadata_file: str = None) -> str:
+    """
+    构建 OSS 上传路径前缀
+    
+    格式：/screenshots/<平台名>/<视频 ID>/
+    
+    Args:
+        video_url: 视频 URL（可选）
+        metadata_file: 元数据 JSON 文件路径（可选）
+    
+    Returns:
+        str: OSS 路径前缀
+    """
+    platform = 'unknown'
+    video_id = 'unknown'
+    
+    # 尝试从 URL 识别平台
+    if video_url:
+        platform, video_id = detect_platform(video_url)
+    
+    # 如果 URL 识别失败，尝试从元数据文件获取
+    if platform == 'unknown' and metadata_file and os.path.exists(metadata_file):
+        try:
+            import json
+            with open(metadata_file, 'r', encoding='utf-8') as f:
+                metadata = json.load(f)
+                video_url = metadata.get('webpage_url', '')
+                if video_url:
+                    platform, video_id = detect_platform(video_url)
+                
+                # 如果还是未知，使用 uploader 作为备用
+                if platform == 'unknown':
+                    uploader = metadata.get('uploader', 'unknown')
+                    platform = re.sub(r'[^a-zA-Z0-9]', '', uploader)[:20].lower()
+                    if not platform:
+                        platform = 'unknown'
+                
+                # 使用视频 ID 或标题
+                if video_id == 'unknown':
+                    video_id = metadata.get('id', 'unknown')
+                    if not video_id or video_id == 'unknown':
+                        title = metadata.get('title', 'video')
+                        # 从标题生成安全 ID
+                        video_id = re.sub(r'[^a-zA-Z0-9]', '', title)[:30].lower()
+                        if not video_id:
+                            video_id = 'video'
+        except Exception as e:
+            print(f"⚠️ 读取元数据失败：{e}", file=sys.stderr)
+    
+    # 构建前缀
+    timestamp = __import__('datetime').datetime.now().strftime('%Y%m%d_%H%M%S')
+    prefix = f"screenshots/{platform}/{video_id}_{timestamp}/"
+    
+    print(f"📁 OSS 路径：{prefix}", file=sys.stderr)
+    
+    return prefix
+
+
 def main():
     parser = argparse.ArgumentParser(description='阿里云 OSS 图床上传工具')
-    parser.add_argument('action', choices=['upload', 'batch'], 
-                       help='upload: 上传单文件 | batch: 批量上传目录')
+    parser.add_argument('action', choices=['upload', 'batch', 'auto'], 
+                       help='upload: 上传单文件 | batch: 批量上传目录 | auto: 自动识别平台')
     parser.add_argument('path', help='文件路径或目录路径')
-    parser.add_argument('--prefix', default='screenshots/', 
-                       help='OSS 存储路径前缀（仅 batch 模式）')
+    parser.add_argument('--prefix', default=None, 
+                       help='OSS 存储路径前缀（auto 模式自动识别）')
+    parser.add_argument('--video-url', default=None,
+                       help='视频 URL（auto 模式用于识别平台）')
+    parser.add_argument('--metadata', default=None,
+                       help='元数据 JSON 文件路径（auto 模式备用）')
     parser.add_argument('--public', action='store_true',
                        help='返回公开 URL（需要 Bucket 配置为公开读）')
     parser.add_argument('--format', choices=['text', 'json'], default='text',
@@ -170,8 +286,9 @@ def main():
                 sys.exit(1)
     
     elif args.action == 'batch':
-        # 批量上传
-        results = upload_screenshots(args.path, args.prefix, args.public)
+        # 批量上传（使用指定前缀）
+        prefix = args.prefix or f"screenshots/unknown/unknown_{__import__('datetime').datetime.now().strftime('%Y%m%d_%H%M%S')}/"
+        results = upload_screenshots(args.path, prefix, args.public)
         
         if args.format == 'json':
             import json
@@ -187,7 +304,28 @@ def main():
                     if r['success']:
                         print(f"  - {r['oss_url'][:70]}...")
     
-    return 0 if all(r.get('success', False) for r in (results if args.action == 'batch' else [result])) else 1
+    elif args.action == 'auto':
+        # 自动识别平台并上传
+        print("🔍 自动识别平台...", file=sys.stderr)
+        prefix = build_prefix(args.video_url, args.metadata)
+        
+        results = upload_screenshots(args.path, prefix, args.public)
+        
+        if args.format == 'json':
+            import json
+            print(json.dumps(results, ensure_ascii=False, indent=2))
+        else:
+            success_count = sum(1 for r in results if r['success'])
+            total_count = len(results)
+            print(f"\n📊 上传完成：{success_count}/{total_count} 成功")
+            
+            if success_count > 0:
+                print("\n📎 访问链接:")
+                for r in results:
+                    if r['success']:
+                        print(f"  - {r['oss_url'][:70]}...")
+    
+    return 0
 
 
 if __name__ == '__main__':

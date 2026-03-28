@@ -1,291 +1,626 @@
 #!/bin/bash
-# video-summarize.sh - 完整的视频总结生成流程（Plan A 完整版）
-# 用法：./video-summarize.sh <视频 URL> [输出目录] [cookies 文件]
+# video-summarize.sh - 视频总结生成完整流程 v0.1.0
+# 用法：./video-summarize.sh <视频 URL> [输出目录] [cookies 文件] [选项]
 
 set -e
 
-VIDEO_URL="$1"
-OUTPUT_DIR="${2:-/tmp/video-summarizer}"
-COOKIES_FILE="${3:-$HOME/.cookies/bilibili_cookies.txt}"
+# 平台标识映射（统一小写）
+# bilibili, xhs, douyin, youtube, wxvideo
+
+# 解析参数
+VIDEO_URL=""
+OUTPUT_DIR=""
+USER_SPECIFIED_OUTPUT="false"  # 标记用户是否手动指定了输出目录
+COOKIES_FILE="$HOME/.cookies/bilibili_cookies.txt"
+VERBOSE="false"
+KEEP_VIDEO="false"
+AUTO_PUSH="false"
+RESUME="false"
+
+for arg in "$@"; do
+    case $arg in
+        --verbose|-v)
+            VERBOSE="true"
+            ;;
+        --keep-video)
+            KEEP_VIDEO="true"
+            ;;
+        --push|--auto-push)
+            AUTO_PUSH="true"
+            ;;
+        --resume)
+            RESUME="true"
+            ;;
+        *)
+            if [[ -z "$VIDEO_URL" ]]; then
+                VIDEO_URL="$arg"
+            elif [[ "$USER_SPECIFIED_OUTPUT" == "false" ]]; then
+                OUTPUT_DIR="$arg"
+                USER_SPECIFIED_OUTPUT="true"
+            elif [[ "$COOKIES_FILE" == "$HOME/.cookies/bilibili_cookies.txt" ]]; then
+                COOKIES_FILE="$arg"
+            fi
+            ;;
+    esac
+done
+
+if [[ -z "$VIDEO_URL" ]]; then
+    echo "用法：./video-summarize.sh <视频 URL> [输出目录] [cookies 文件] [选项]"
+    echo ""
+    echo "选项:"
+    echo "  --verbose, -v      显示详细日志（包括错误信息）"
+    echo "  --keep-video       保留视频/音频文件（默认清理）"
+    echo "  --push, --auto-push  完成后自动推送到 Notion"
+    echo "  --resume           从中断点恢复（检测进度文件）"
+    exit 1
+fi
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# ============== 平台识别与输出目录生成 ==============
+
+# 提取平台标识
+extract_platform() {
+    local url="$1"
+    
+    # B 站：bilibili.com 或 b23.tv
+    if [[ "$url" =~ (bilibili\.com|b23\.tv) ]]; then
+        echo "bilibili"
+        return
+    fi
+    
+    # 小红书：xiaohongshu.com 或 xhslink.com
+    if [[ "$url" =~ (xiaohongshu\.com|xhslink\.com) ]]; then
+        echo "xhs"
+        return
+    fi
+    
+    # 抖音：douyin.com 或 iesdouyin.com
+    if [[ "$url" =~ (douyin\.com|iesdouyin\.com) ]]; then
+        echo "douyin"
+        return
+    fi
+    
+    # YouTube：youtube.com 或 youtu.be
+    if [[ "$url" =~ (youtube\.com|youtu\.be) ]]; then
+        echo "youtube"
+        return
+    fi
+    
+    # 微信视频：channels.weixin.qq.com
+    if [[ "$url" =~ (channels\.weixin\.qq\.com|mp\.weixin\.qq\.com) ]]; then
+        echo "wxvideo"
+        return
+    fi
+    
+    # 未知平台
+    echo "unknown"
+}
+
+# 提取视频 ID
+extract_video_id() {
+    local url="$1"
+    local platform="$2"
+    
+    case "$platform" in
+        bilibili)
+            # 提取 BV 号或 av 号
+            if [[ "$url" =~ (BV[a-zA-Z0-9]+) ]]; then
+                echo "${BASH_REMATCH[1]}"
+            elif [[ "$url" =~ av([0-9]+) ]]; then
+                echo "av${BASH_REMATCH[1]}"
+            else
+                # 短链：使用路径作为 ID
+                local path=$(echo "$url" | sed -E 's|https?://[^/]+/||' | cut -d'?' -f1)
+                echo "${path:-b23_shortlink}"
+            fi
+            ;;
+        xhs)
+            # 小红书笔记 ID（数字或带字母）
+            if [[ "$url" =~ /([a-zA-Z0-9]{10,})(\?|$|\&|/) ]]; then
+                echo "${BASH_REMATCH[1]}"
+            else
+                # 短链：使用路径作为 ID
+                local path=$(echo "$url" | sed -E 's|https?://[^/]+/||' | cut -d'?' -f1)
+                echo "${path:-xhs_shortlink}"
+            fi
+            ;;
+        douyin)
+            # 抖音：提取视频 ID 或使用短链哈希
+            if [[ "$url" =~ /video/([0-9]+) ]]; then
+                echo "${BASH_REMATCH[1]}"
+            elif [[ "$url" =~ /([a-zA-Z0-9_-]{10,})(\?|$) ]]; then
+                echo "${BASH_REMATCH[1]}"
+            else
+                # 短链：使用路径作为 ID
+                local path=$(echo "$url" | sed -E 's|https?://[^/]+/||' | cut -d'?' -f1)
+                echo "${path:-douyin_shortlink}"
+            fi
+            ;;
+        youtube)
+            # YouTube 视频 ID
+            if [[ "$url" =~ v=([a-zA-Z0-9_-]+) ]]; then
+                echo "${BASH_REMATCH[1]}"
+            elif [[ "$url" =~ youtu\.be/([a-zA-Z0-9_-]+) ]]; then
+                echo "${BASH_REMATCH[1]}"
+            else
+                echo "unknown"
+            fi
+            ;;
+        wxvideo)
+            # 微信视频号：提取 ID 或使用 URL 哈希
+            if [[ "$url" =~ vid=([a-zA-Z0-9]+) ]]; then
+                echo "${BASH_REMATCH[1]}"
+            else
+                # 使用 URL 的 MD5 前 12 位作为标识
+                echo "$url" | md5sum | cut -c1-12
+            fi
+            ;;
+        *)
+            echo "unknown"
+            ;;
+    esac
+}
+
+# 生成输出目录
+if [[ "$USER_SPECIFIED_OUTPUT" == "true" ]]; then
+    # 用户手动指定了目录，直接使用
+    : # OUTPUT_DIR 已设置
+else
+    # 自动生成：/tmp/video-summarizer/<平台>/<视频 ID>
+    PLATFORM=$(extract_platform "$VIDEO_URL")
+    VIDEO_ID=$(extract_video_id "$VIDEO_URL" "$PLATFORM")
+    OUTPUT_DIR="/tmp/video-summarizer/$PLATFORM/$VIDEO_ID"
+fi
 
 mkdir -p "$OUTPUT_DIR"
 
-echo "========================================"
-echo "🎬 Video Summarizer v1.3 (Plan A)"
-echo "========================================"
+# 进度文件
+PROGRESS_FILE="$OUTPUT_DIR/.progress.json"
+
+echo "📁 输出目录：$OUTPUT_DIR"
+echo "🏷️  平台：$PLATFORM | 视频 ID: $VIDEO_ID"
 echo ""
 
-# ==================== Step 1: 获取元数据 ====================
-echo "📥 Step 1/6: 获取视频元数据..."
+# 检查环境变量（自动推送）
+if [[ "$AUTO_PUSH" == "true" ]]; then
+    if [[ -z "$NOTION_VIDEO_SUMMARY_DATABASE_ID" ]]; then
+        NOTION_VIDEO_SUMMARY_DATABASE_ID=$(grep "^NOTION_VIDEO_SUMMARY_DATABASE_ID=" "$HOME/.openclaw/.env" 2>/dev/null | cut -d'=' -f2- | tr -d '"' | tr -d "'")
+    fi
+fi
 
-yt-dlp --dump-json "$VIDEO_URL" > "$OUTPUT_DIR/metadata.json" 2>/dev/null
-
-# 使用 python 解析 JSON（更可靠）
-TITLE=$(python3 -c "import json; print(json.load(open('$OUTPUT_DIR/metadata.json'))['title'])" 2>/dev/null || echo "Unknown")
-UPLOADER=$(python3 -c "import json; print(json.load(open('$OUTPUT_DIR/metadata.json'))['uploader'])" 2>/dev/null || echo "Unknown")
-DURATION=$(python3 -c "import json; print(json.load(open('$OUTPUT_DIR/metadata.json'))['duration_string'])" 2>/dev/null || echo "Unknown")
-DURATION_SEC=$(python3 -c "import json; print(int(json.load(open('$OUTPUT_DIR/metadata.json'))['duration']))" 2>/dev/null || echo "0")
-THUMBNAIL=$(python3 -c "import json; print(json.load(open('$OUTPUT_DIR/metadata.json'))['thumbnail'])" 2>/dev/null || echo "")
-
-echo "✅ 元数据获取完成"
-echo "   标题：$TITLE"
-echo "   UP 主：$UPLOADER"
-echo "   时长：$DURATION ($DURATION_SEC 秒)"
+[[ "$VERBOSE" == "true" ]] && echo "🔍 详细模式 | "
+[[ "$KEEP_VIDEO" == "true" ]] && echo "💾 保留视频 | "
+[[ "$AUTO_PUSH" == "true" ]] && echo "📤 自动推送 | "
+[[ "$RESUME" == "true" ]] && echo "♻️  恢复模式"
 echo ""
 
-# ==================== Step 2: 尝试下载字幕 ====================
-echo "📝 Step 2/6: 尝试下载字幕..."
+# 进度保存函数
+save_progress() {
+    local step=$1
+    local status=$2
+    local timestamp=$(date -Iseconds)
+    cat > "$PROGRESS_FILE" << EOF
+{
+  "video_url": "$VIDEO_URL",
+  "current_step": "$step",
+  "status": "$status",
+  "timestamp": "$timestamp",
+  "output_dir": "$OUTPUT_DIR"
+}
+EOF
+}
 
-SUBTITLE_FILE=""
-SUBTITLE_SOURCE=""
+# 检查进度（恢复模式）
+check_progress() {
+    if [[ "$RESUME" == "true" && -f "$PROGRESS_FILE" ]]; then
+        local last_step=$(python3 -c "import json; print(json.load(open('$PROGRESS_FILE')).get('current_step', ''))" 2>/dev/null)
+        if [[ -n "$last_step" ]]; then
+            echo "♻️  检测到上次运行到：Step $last_step"
+            echo "   将跳过已完成的步骤..."
+            return 0
+        fi
+    fi
+    return 1
+}
 
-# 尝试 1: 用 Cookies 下载官方字幕
+echo "🎬 Video Summarizer v0.1.0"
+echo ""
+
+# Step 1: 元数据
+if check_progress && [[ -f "$OUTPUT_DIR/metadata.json" ]]; then
+    echo "⏭️  Step 1 跳过"
+else
+    echo "📥 Step 1: 元数据..."
+    save_progress "1" "running"
+    
+    if [[ "$VERBOSE" == "true" ]]; then
+        yt-dlp --dump-json "$VIDEO_URL" > "$OUTPUT_DIR/metadata.json"
+    else
+        yt-dlp --dump-json "$VIDEO_URL" > "$OUTPUT_DIR/metadata.json" 2>/dev/null
+    fi
+    
+    TITLE=$(python3 -c "import json; print(json.load(open('$OUTPUT_DIR/metadata.json'))['title'])" 2>/dev/null || echo "Unknown")
+    UPLOADER=$(python3 -c "import json; print(json.load(open('$OUTPUT_DIR/metadata.json'))['uploader'])" 2>/dev/null || echo "Unknown")
+    DURATION=$(python3 -c "import json; print(json.load(open('$OUTPUT_DIR/metadata.json'))['duration_string'])" 2>/dev/null || echo "Unknown")
+    DURATION_SEC=$(python3 -c "import json; print(int(json.load(open('$OUTPUT_DIR/metadata.json'))['duration']))" 2>/dev/null || echo "0")
+    THUMBNAIL=$(python3 -c "import json; print(json.load(open('$OUTPUT_DIR/metadata.json'))['thumbnail'])" 2>/dev/null || echo "")
+    
+    echo "✅ 元数据完成 | 标题：$TITLE | UP 主：$UPLOADER | 时长：$DURATION"
+    [[ "$VERBOSE" == "true" ]] && echo "   📄 $OUTPUT_DIR/metadata.json"
+    save_progress "1" "done"
+fi
+
+# Step 2: 字幕
+if check_progress && [[ -n "$(find "$OUTPUT_DIR" -name "*.vtt" 2>/dev/null | head -1)" ]]; then
+    echo "⏭️  Step 2 跳过"
+    SUBTITLE_FILE=$(find "$OUTPUT_DIR" -name "*.vtt" 2>/dev/null | head -1)
+    SUBTITLE_SOURCE="已存在"
+else
+    echo "📝 Step 2: 字幕..."
+    save_progress "2" "running"
+    
+    SUBTITLE_FILE=""
+    SUBTITLE_SOURCE=""
+    SUBTITLE_LOG="$OUTPUT_DIR/subtitle_download.log"
+
+# 尝试 1: Cookies + 官方字幕
 if [[ -f "$COOKIES_FILE" ]]; then
     echo "   尝试使用 Cookies 下载官方字幕..."
-    yt-dlp --cookies "$COOKIES_FILE" \
-           --write-sub --write-auto-sub \
-           --sub-lang "ai-zh,zh-Hans,zh,en" \
-           --skip-download \
-           --convert-subs vtt \
-           -o "$OUTPUT_DIR/video" "$VIDEO_URL" 2>/dev/null || true
-    
-    SUBTITLE_FILE=$(find "$OUTPUT_DIR" -name "*.vtt" 2>/dev/null | head -1)
-    if [[ -n "$SUBTITLE_FILE" && -s "$SUBTITLE_FILE" ]]; then
-        SUBTITLE_SOURCE="官方字幕 (B 站 AI)"
-        echo "   ✅ 官方字幕下载成功！"
-        echo "   文件：$SUBTITLE_FILE"
-    fi
-fi
-
-# 尝试 2: 无 Cookies 下载自动字幕
-if [[ -z "$SUBTITLE_FILE" ]]; then
-    echo "   尝试下载自动字幕（无需登录）..."
-    yt-dlp --write-auto-sub \
-           --sub-lang "zh-Hans,zh,en" \
-           --skip-download \
-           --convert-subs vtt \
-           -o "$OUTPUT_DIR/video" "$VIDEO_URL" 2>/dev/null || true
-    
-    SUBTITLE_FILE=$(find "$OUTPUT_DIR" -name "*.vtt" 2>/dev/null | head -1)
-    if [[ -n "$SUBTITLE_FILE" && -s "$SUBTITLE_FILE" ]]; then
-        SUBTITLE_SOURCE="自动字幕 (平台)"
-        echo "   ✅ 自动字幕下载成功！"
-        echo "   文件：$SUBTITLE_FILE"
-    fi
-fi
-
-# Plan B: 语音转录（暂不启用，提示用户）
-if [[ -z "$SUBTITLE_FILE" ]]; then
-    echo "   ⚠️  未找到可用字幕"
-    echo "   ℹ️  Plan B 语音转录功能待启用（需安装 Whisper）"
-    echo "   ❌ 字幕获取失败，无法继续"
-    exit 1
-fi
-
-echo ""
-echo "✅ 字幕来源：$SUBTITLE_SOURCE"
-echo ""
-
-# ==================== Step 3: 分析字幕内容 ====================
-echo "🧠 Step 3/6: 分析字幕内容..."
-
-# 提取字幕文本（去除时间戳）
-# 使用 awk 更可靠地处理 VTT 格式
-awk '
-    /^WEBVTT/ { next }
-    /^[0-9]/ { next }
-    /^$/ { next }
-    /-->/ { next }
-    { print }
-' "$SUBTITLE_FILE" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -v "^$" > "$OUTPUT_DIR/transcript.txt"
-
-WORD_COUNT=$(wc -w < "$OUTPUT_DIR/transcript.txt")
-LINE_COUNT=$(wc -l < "$OUTPUT_DIR/transcript.txt")
-
-if [[ $WORD_COUNT -eq 0 ]]; then
-    echo "   ⚠️  字幕文本为空，检查字幕文件"
-    exit 1
-fi
-
-echo "   字幕行数：$LINE_COUNT"
-echo "   字幕字数：$WORD_COUNT"
-echo "   ✅ 字幕文本提取完成"
-echo ""
-
-# ==================== Step 4: 下载视频（必须成功） ====================
-echo "📥 Step 4/6: 下载视频（用于截图）..."
-
-VIDEO_FILE="$OUTPUT_DIR/video.mp4"
-MAX_RETRIES=3
-RETRY_COUNT=0
-DOWNLOAD_SUCCESS=false
-
-while [[ $RETRY_COUNT -lt $MAX_RETRIES && "$DOWNLOAD_SUCCESS" == "false" ]]; do
-    RETRY_COUNT=$((RETRY_COUNT + 1))
-    echo "   尝试下载视频 (第 $RETRY_COUNT/$MAX_RETRIES 次)..."
-    
-    # 下载视频（优先 720P，平衡质量和速度）
-    yt-dlp -f "bestvideo[height<=720]+bestaudio/best[height<=720]" \
-           --merge-output-format mp4 \
-           -o "$VIDEO_FILE" "$VIDEO_URL" 2>&1 && DOWNLOAD_SUCCESS=true || {
-        echo "   ⚠️  下载失败，准备重试..."
-        rm -f "$VIDEO_FILE"* 2>/dev/null
-    }
-done
-
-if [[ "$DOWNLOAD_SUCCESS" == "true" && -f "$VIDEO_FILE" ]]; then
-    VIDEO_SIZE=$(ls -lh "$VIDEO_FILE" | awk '{print $5}')
-    echo "   ✅ 视频下载成功！($VIDEO_SIZE)"
-else
-    # 终极尝试：下载任意可用格式
-    echo "   ⚠️  标准下载失败，尝试降级模式..."
-    yt-dlp -f "best" \
-           --merge-output-format mp4 \
-           -o "$VIDEO_FILE" "$VIDEO_URL" 2>&1 && {
-        echo "   ✅ 降级模式下载成功！"
-    } || {
-        echo "   ❌ 视频下载失败，无法继续"
-        exit 1
-    }
-fi
-echo ""
-
-# ==================== Step 5: 智能截图 ====================
-echo "🎬 Step 5/6: 智能截取视频帧..."
-
-# 验证视频文件
-if ! ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$VIDEO_FILE" > /dev/null 2>&1; then
-    echo "   ❌ 视频文件损坏，无法截图"
-    exit 1
-fi
-
-# 计算截图点（根据视频时长）
-if [[ $DURATION_SEC -lt 120 ]]; then
-    # 短视频：3 张截图
-    SCREENSHOTS=("00:00:02" "00:00:30" "00:01:00")
-elif [[ $DURATION_SEC -lt 300 ]]; then
-    # 中等视频：5 张截图
-    SCREENSHOTS=("00:00:02" "00:01:00" "00:02:00" "00:03:00" "00:04:00")
-else
-    # 长视频：7 张截图（均匀分布）
-    INTERVAL=$((DURATION_SEC / 8))
-    SCREENSHOTS=()
-    for i in {1..7}; do
-        TIME=$((INTERVAL * i))
-        HOURS=$((TIME / 3600))
-        MINS=$(((TIME % 3600) / 60))
-        SECS=$((TIME % 60))
-        SCREENSHOTS+=($(printf "%02d:%02d:%02d" $HOURS $MINS $SECS))
-    done
-fi
-
-mkdir -p "$OUTPUT_DIR/screenshots"
-SUCCESS_COUNT=0
-
-for i in "${!SCREENSHOTS[@]}"; do
-    TIME="${SCREENSHOTS[$i]}"
-    OUTPUT="$OUTPUT_DIR/screenshots/screenshot_$(printf "%02d" $((i+1))).jpg"
-    
-    # 使用 -update 参数避免 ffmpeg 报错
-    if ffmpeg -ss "$TIME" -i "$VIDEO_FILE" -vframes 1 -update 1 -q:v 2 "$OUTPUT" -y 2>/dev/null; then
-        echo "   📸 截图 $((i+1)): $TIME → $(basename $OUTPUT)"
-        SUCCESS_COUNT=$((SUCCESS_COUNT + 1))
+    if [[ "$VERBOSE" == "true" ]]; then
+        yt-dlp --cookies "$COOKIES_FILE" \
+               --write-sub --write-auto-sub \
+               --sub-lang "ai-zh,zh-Hans,zh,en" \
+               --skip-download \
+               --convert-subs vtt \
+               -o "$OUTPUT_DIR/video" "$VIDEO_URL" 2>&1 | tee -a "$SUBTITLE_LOG" || true
     else
-        echo "   ⚠️  截图 $((i+1)) 失败：$TIME"
+        yt-dlp --cookies "$COOKIES_FILE" \
+               --write-sub --write-auto-sub \
+               --sub-lang "ai-zh,zh-Hans,zh,en" \
+               --skip-download \
+               --convert-subs vtt \
+               -o "$OUTPUT_DIR/video" "$VIDEO_URL" 2>/dev/null || true
+    fi
+    
+    SUBTITLE_FILE=$(find "$OUTPUT_DIR" -name "*.vtt" 2>/dev/null | head -1)
+    [[ -n "$SUBTITLE_FILE" && -s "$SUBTITLE_FILE" ]] && SUBTITLE_SOURCE="官方字幕"
+fi
+
+# 尝试 2: 自动字幕
+if [[ -z "$SUBTITLE_FILE" ]]; then
+    echo "   尝试下载自动字幕..."
+    if [[ "$VERBOSE" == "true" ]]; then
+        yt-dlp --write-auto-sub \
+               --sub-lang "zh-Hans,zh,en" \
+               --skip-download \
+               --convert-subs vtt \
+               -o "$OUTPUT_DIR/video" "$VIDEO_URL" 2>&1 | tee -a "$SUBTITLE_LOG" || true
+    else
+        yt-dlp --write-auto-sub \
+               --sub-lang "zh-Hans,zh,en" \
+               --skip-download \
+               --convert-subs vtt \
+               -o "$OUTPUT_DIR/video" "$VIDEO_URL" 2>/dev/null || true
+    fi
+    
+    SUBTITLE_FILE=$(find "$OUTPUT_DIR" -name "*.vtt" 2>/dev/null | head -1)
+    [[ -n "$SUBTITLE_FILE" && -s "$SUBTITLE_FILE" ]] && SUBTITLE_SOURCE="自动字幕"
+fi
+
+# Plan B: 语音转录
+if [[ -z "$SUBTITLE_FILE" ]]; then
+    echo "   ⚠️  未找到可用字幕，启动 Plan B 语音转录..."
+    
+    AUDIO_FILE="$OUTPUT_DIR/audio.mp3"
+    SUBTITLE_FILE="$OUTPUT_DIR/audio.vtt"
+    
+    # 下载音频
+    "$SCRIPT_DIR/download-audio.sh" "$VIDEO_URL" "$AUDIO_FILE"
+    
+    # 语音转录
+    python3 "$SCRIPT_DIR/transcribe-audio.py" "$AUDIO_FILE" "$SUBTITLE_FILE"
+    
+    SUBTITLE_SOURCE="语音转录 (Plan B)"
+    echo "   ✅ 语音转录完成"
+fi
+
+echo "✅ 字幕完成 | 来源：$SUBTITLE_SOURCE"
+save_progress "2" "done"
+fi
+
+# Step 3: 文本提取
+if check_progress && [[ -f "$OUTPUT_DIR/transcript.txt" ]]; then
+    echo "⏭️  Step 3 跳过"
+    WORD_COUNT=$(wc -w < "$OUTPUT_DIR/transcript.txt")
+else
+    echo "📝 Step 3: 文本提取..."
+    save_progress "3" "running"
+    
+    awk '/^WEBVTT/{next} /^[0-9]/{next} /^$/{next} /-->/ {next} {print}' "$SUBTITLE_FILE" | \
+        sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -v "^$" > "$OUTPUT_DIR/transcript.txt"
+    
+    WORD_COUNT=$(wc -w < "$OUTPUT_DIR/transcript.txt")
+    LINE_COUNT=$(wc -l < "$OUTPUT_DIR/transcript.txt")
+    
+    if [[ $WORD_COUNT -eq 0 ]]; then
+        echo "   ❌ 字幕文本为空"
+        exit 1
+    fi
+    
+    echo "✅ 文本提取完成 | $LINE_COUNT 行 | $WORD_COUNT 字"
+    save_progress "3" "done"
+fi
+
+# Step 4: 视频下载
+if check_progress && [[ -f "$OUTPUT_DIR/video.mp4" ]]; then
+    echo "⏭️  Step 4 跳过"
+    VIDEO_FILE="$OUTPUT_DIR/video.mp4"
+else
+    echo "📥 Step 4: 视频下载..."
+    save_progress "4" "running"
+    
+    VIDEO_FILE="$OUTPUT_DIR/video.mp4"
+    DOWNLOAD_SUCCESS=false
+    VIDEO_LOG="$OUTPUT_DIR/video_download.log"
+
+for i in 1 2 3; do
+    echo "   尝试 $i/3..."
+    if [[ "$VERBOSE" == "true" ]]; then
+        yt-dlp -f "bestvideo[height<=720]+bestaudio/best[height<=720]" \
+               --merge-output-format mp4 \
+               -o "$VIDEO_FILE" "$VIDEO_URL" 2>&1 | tee -a "$VIDEO_LOG" && { DOWNLOAD_SUCCESS=true; break; } || {
+            rm -f "$VIDEO_FILE"* 2>/dev/null
+        }
+    else
+        yt-dlp -f "bestvideo[height<=720]+bestaudio/best[height<=720]" \
+               --merge-output-format mp4 \
+               -o "$VIDEO_FILE" "$VIDEO_URL" 2>/dev/null && { DOWNLOAD_SUCCESS=true; break; } || {
+            rm -f "$VIDEO_FILE"* 2>/dev/null
+        }
     fi
 done
 
-if [[ $SUCCESS_COUNT -eq 0 ]]; then
-    echo "   ❌ 所有截图失败，检查视频文件"
-    exit 1
+if [[ "$DOWNLOAD_SUCCESS" != "true" ]]; then
+    echo "   降级尝试..."
+    if [[ "$VERBOSE" == "true" ]]; then
+        yt-dlp -f "best" --merge-output-format mp4 -o "$VIDEO_FILE" "$VIDEO_URL" 2>&1 | tee -a "$VIDEO_LOG" || {
+            echo "   ❌ 视频下载失败"
+            exit 1
+        }
+    else
+        yt-dlp -f "best" --merge-output-format mp4 -o "$VIDEO_FILE" "$VIDEO_URL" 2>/dev/null || {
+            echo "   ❌ 视频下载失败"
+            exit 1
+        }
+    fi
 fi
 
-echo "   ✅ 截图完成 ($SUCCESS_COUNT/${#SCREENSHOTS[@]} 张)"
+echo "✅ 视频下载成功 | $(ls -lh "$VIDEO_FILE" | awk '{print $5}')"
+    save_progress "4" "done"
+fi
+
+# Step 7: AI 分析（先生成 JSON，供截图使用）
+if check_progress && [[ -f "$OUTPUT_DIR/ai_result.json" ]]; then
+    echo "⏭️  Step 7 跳过（AI 结果已存在）"
+else
+    echo "🤖 Step 7: AI 分析（生成 JSON）..."
+    save_progress "7" "running"
+    
+    AI_SCRIPT="$SCRIPT_DIR/analyze-subtitles-ai.py"
+    AI_JSON_FILE="$OUTPUT_DIR/ai_result.json"
+    AI_LOG="$OUTPUT_DIR/ai_analysis.log"
+    TEMP_SUMMARY="$OUTPUT_DIR/summary_temp.md"
+    
+    if [[ -f "$AI_SCRIPT" ]]; then
+        if [[ "$VERBOSE" == "true" ]]; then
+            python3 "$AI_SCRIPT" "$SUBTITLE_FILE" "$OUTPUT_DIR/metadata.json" "$TEMP_SUMMARY" 2>&1 | tee -a "$AI_LOG"
+        else
+            python3 "$AI_SCRIPT" "$SUBTITLE_FILE" "$OUTPUT_DIR/metadata.json" "$TEMP_SUMMARY" 2>/dev/null
+        fi
+        
+        if [[ -f "$AI_JSON_FILE" ]]; then
+            echo "✅ AI 分析完成 | JSON: $AI_JSON_FILE"
+        else
+            echo "⚠️  AI 分析失败"
+            [[ "$VERBOSE" == "true" ]] && cat "$AI_LOG" | tail -10
+            exit 1
+        fi
+    else
+        echo "⚠️  AI 脚本不存在"
+        exit 1
+    fi
+    save_progress "7" "done"
+fi
+
+# Step 5: 截图（基于 AI 分析的时间戳）
+if check_progress && [[ -d "$OUTPUT_DIR/screenshots" && -n "$(ls -A "$OUTPUT_DIR/screenshots" 2>/dev/null)" ]]; then
+    echo "⏭️  Step 5 跳过"
+else
+    echo "🎬 Step 5: 截图（基于内容时间戳）..."
+    save_progress "5" "running"
+    
+    mkdir -p "$OUTPUT_DIR/screenshots"
+    
+    # 从 AI 分析结果中提取时间戳（核心要点 + 注意事项，支持最多 30 张）
+    SCREENSHOT_TIMES=()
+    AI_JSON="$OUTPUT_DIR/ai_result.json"
+    MAX_SCREENSHOTS=30
+    
+    if [[ -f "$AI_JSON" ]]; then
+        echo "   📊 从 AI 分析结果提取时间戳..."
+        # 使用 Python 提取 key_points 和 warnings 中的时间戳
+        SCREENSHOT_TIMES=($(python3 << PYEOF
+import json
+import sys
+
+try:
+    with open('$AI_JSON', 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    
+    times = []
+    # 提取核心要点时间戳（优先）
+    for point in data.get('key_points', []):
+        time_str = point.get('time', '')
+        if time_str:
+            times.append(time_str)
+    
+    # 提取注意事项时间戳
+    for warning in data.get('warnings', []):
+        time_str = warning.get('time', '')
+        if time_str:
+            times.append(time_str)
+    
+    # 去重，限制最多 30 个
+    unique_times = list(dict.fromkeys(times))[:$MAX_SCREENSHOTS]
+    
+    # 如果不足 10 个，用均匀分布补充到 10 个
+    if len(unique_times) < 10:
+        # 简单均匀分布兜底
+        interval = $DURATION_SEC // 11
+        for i in range(1, 11):
+            t = interval * i
+            mm = t // 60
+            ss = t % 60
+            fallback = f"{mm:02d}:{ss:02d}"
+            if fallback not in unique_times:
+                unique_times.append(fallback)
+            if len(unique_times) >= 10:
+                break
+    
+    for t in unique_times[:$MAX_SCREENSHOTS]:
+        print(t)
+except Exception as e:
+    # AI 结果解析失败，使用均匀分布
+    interval = $DURATION_SEC // 11
+    for i in range(1, 11):
+        t = interval * i
+        mm = t // 60
+        ss = t % 60
+        print(f"{mm:02d}:{ss:02d}")
+PYEOF
+))
+        echo "   ✅ 提取到 ${#SCREENSHOT_TIMES[@]} 个时间点"
+    else
+        echo "   ⚠️  AI 结果不存在，使用均匀分布兜底"
+    fi
+    
+    # 如果提取失败，使用均匀分布
+    if [[ ${#SCREENSHOT_TIMES[@]} -eq 0 ]]; then
+        if [[ $DURATION_SEC -lt 120 ]]; then
+            SCREENSHOT_TIMES=("00:02" "00:30" "01:00" "01:30" "02:00")
+        elif [[ $DURATION_SEC -lt 300 ]]; then
+            SCREENSHOT_TIMES=("00:02" "00:30" "01:00" "01:30" "02:00" "02:30" "03:00" "03:30" "04:00" "04:30")
+        else
+            INTERVAL=$((DURATION_SEC / 11))
+            SCREENSHOT_TIMES=()
+            for i in {1..10}; do
+                T=$((INTERVAL * i))
+                SCREENSHOT_TIMES+=($(printf "%02d:%02d" $((T/60)) $((T%60))))
+            done
+        fi
+        echo "   📊 使用均匀分布：${#SCREENSHOT_TIMES[@]} 个时间点"
+    fi
+    
+    # 执行截图
+    SUCCESS_COUNT=0
+    for i in "${!SCREENSHOT_TIMES[@]}"; do
+        TIME="${SCREENSHOT_TIMES[$i]}"
+        # 转换为 HH:MM:SS 格式（ffmpeg 需要）
+        if [[ "$TIME" =~ ^([0-9]+):([0-9]+)$ ]]; then
+            FFMPEG_TIME="00:${BASH_REMATCH[1]}:${BASH_REMATCH[2]}"
+        elif [[ "$TIME" =~ ^([0-9]+):([0-9]+):([0-9]+)$ ]]; then
+            FFMPEG_TIME="${BASH_REMATCH[1]}:${BASH_REMATCH[2]}:${BASH_REMATCH[3]}"
+        else
+            FFMPEG_TIME="00:$TIME"
+        fi
+        
+        OUT="$OUTPUT_DIR/screenshots/screenshot_$(printf "%02d" $((i+1))).jpg"
+        ffmpeg -ss "$FFMPEG_TIME" -i "$VIDEO_FILE" -vframes 1 -update 1 -q:v 2 "$OUT" -y 2>/dev/null && {
+            echo "   📸 $TIME → screenshot_$(printf "%02d" $((i+1))).jpg"
+            SUCCESS_COUNT=$((SUCCESS_COUNT + 1))
+        }
+    done
+    
+    [[ $SUCCESS_COUNT -eq 0 ]] && { echo "❌ 截图失败"; exit 1; }
+    echo "✅ 截图完成 | $SUCCESS_COUNT 张"
+    
+    # 保存截图时间戳（供 Markdown 渲染使用）
+    SCREENSHOT_TIMES_FILE="$OUTPUT_DIR/screenshot_times.txt"
+    printf '%s\n' "${SCREENSHOT_TIMES[@]}" > "$SCREENSHOT_TIMES_FILE"
+    echo "   💾 截图时间戳已保存：$SCREENSHOT_TIMES_FILE"
+    
+    save_progress "5" "done"
+fi
+
+# Step 6: OSS 上传
+if check_progress && [[ -f "$OUTPUT_DIR/screenshot_urls.txt" ]]; then
+    echo "⏭️  Step 6 跳过"
+else
+    echo "☁️  Step 6: OSS 上传..."
+    save_progress "6" "running"
+    
+    OSS_SCRIPT="$SCRIPT_DIR/upload-to-oss.py"
+    OSS_URLS_FILE="$OUTPUT_DIR/screenshot_urls.txt"
+    OSS_LOG_FILE="$OUTPUT_DIR/oss_upload.log"
+
+if [[ -f "$OSS_SCRIPT" ]]; then
+    # 使用 auto 模式，自动识别平台并生成规范路径
+    # 错误日志保存到 oss_upload.log
+    python3 "$OSS_SCRIPT" auto "$OUTPUT_DIR/screenshots" \
+        --video-url "$VIDEO_URL" --metadata "$OUTPUT_DIR/metadata.json" \
+        --public --format json > "$OSS_URLS_FILE" 2> "$OSS_LOG_FILE"
+    
+    EXIT_CODE=$?
+    
+    if [[ -s "$OSS_URLS_FILE" ]]; then
+        URL_COUNT=$(python3 -c "import json; print(len([x for x in json.load(open('$OSS_URLS_FILE')) if x.get('success')]))" 2>/dev/null || echo "0")
+        [[ "$URL_COUNT" -gt 0 ]] && echo "✅ OSS 上传成功 | $URL_COUNT 张" || { echo "⚠️  OSS 上传失败"; echo "[]" > "$OSS_URLS_FILE"; }
+    else
+        echo "⚠️  OSS 上传失败，使用本地路径"
+        echo "[]" > "$OSS_URLS_FILE"
+    fi
+else
+    echo "⚠️  OSS 脚本不存在，使用本地路径"
+    echo "[]" > "$OSS_URLS_FILE"
+fi
+save_progress "6" "done"
+fi
+
+# Step 7.5: 渲染最终 Markdown（截图和 OSS 完成后）
+echo "📝 Step 7.5: 渲染 Markdown..."
+SUMMARY_FILE="$OUTPUT_DIR/summary.md"
+
+# 重新调用 AI 脚本，让它读取已上传的截图 URL 并渲染最终 Markdown
+python3 "$AI_SCRIPT" "$SUBTITLE_FILE" "$OUTPUT_DIR/metadata.json" "$SUMMARY_FILE" 2>/dev/null || true
+
+if [[ -f "$SUMMARY_FILE" ]]; then
+    echo "✅ Markdown 渲染完成"
+    rm -f "$TEMP_SUMMARY" 2>/dev/null
+else
+    echo "⚠️  Markdown 渲染失败，使用临时文件"
+    [[ -f "$TEMP_SUMMARY" ]] && mv "$TEMP_SUMMARY" "$SUMMARY_FILE"
+fi
+
+# Step 8: 输出
+echo "📁 Step 8: 整理输出..."
+save_progress "8" "done"
+
+echo ""
+echo "================================"
+echo "✅ 处理完成！"
+echo "================================"
+echo "📁 $OUTPUT_DIR"
 echo ""
 
-# ==================== Step 6: 生成总结草稿 ====================
-echo "📝 Step 6/6: 生成结构化总结..."
+[[ "$VERBOSE" == "true" ]] && { echo "📄 文件:"; ls -lh "$OUTPUT_DIR"; echo "📸 截图:"; ls "$OUTPUT_DIR/screenshots/"; } || echo "📄 总结：$SUMMARY_FILE | 截图：$(ls "$OUTPUT_DIR/screenshots/" 2>/dev/null | wc -l) 张"
 
-cat > "$OUTPUT_DIR/summary.md" << EOF
-# $TITLE
+# 清理
+[[ "$KEEP_VIDEO" != "true" ]] && { rm -f "$OUTPUT_DIR/video.mp4" "$OUTPUT_DIR/audio.mp3" 2>/dev/null; echo "🧹 已清理视频/音频"; } || echo "💾 保留视频/音频"
 
-**Tags:** \`视频总结\` \`AI\` \`教程\`
+# 推送
+[[ "$AUTO_PUSH" == "true" && -n "$NOTION_VIDEO_SUMMARY_DATABASE_ID" ]] && { echo ""; echo "📤 推送到 Notion..."; python3 "$SCRIPT_DIR/push-to-notion.py" "$SUMMARY_FILE" "$NOTION_VIDEO_SUMMARY_DATABASE_ID"; } || echo "📤 推送：python3 push-to-notion.py $SUMMARY_FILE"
 
-**Status:** ✅ 已完成
-
-**Author:** $UPLOADER
-
-**Cover:**
-![视频封面]($THUMBNAIL)
-
----
-
-## 📝 Note
-
-*待 AI 生成概述*
-
----
-
-## 📺 视频信息
-
-**链接:** $VIDEO_URL
-**时长:** $DURATION
-**UP 主:** $UPLOADER
-**字幕:** $SUBTITLE_SOURCE
-
----
-
-## 🎯 核心要点
-
-*待 AI 分析字幕内容后生成*
-
----
-
-## 📚 关键概念
-
-*待 AI 提取*
-
----
-
-## 🎬 视频帧截图
-
-截图已保存到：\`$OUTPUT_DIR/screenshots/\`
-
-共截取 $SUCCESS_COUNT 张图片，时间点：
-$(for i in "${!SCREENSHOTS[@]}"; do echo "- 截图 $((i+1)): ${SCREENSHOTS[$i]}"; done)
-
----
-
-## 💡 总结
-
-*待 AI 生成最终总结*
-
----
-
-*生成时间：$(date +%Y-%m-%d)*
-*技能版本：video-summarizer v1.3 (Plan A)*
-*字幕来源：$SUBTITLE_SOURCE*
-*字幕字数：$WORD_COUNT*
-EOF
-
-echo "   ✅ 总结草稿生成完成"
-echo "   文件：$OUTPUT_DIR/summary.md"
-echo ""
-
-# ==================== 完成 ====================
-echo "========================================"
-echo "✅ Plan A 流程完成！"
-echo "========================================"
-echo ""
-echo "输出目录：$OUTPUT_DIR"
-echo ""
-echo "文件列表:"
-ls -lh "$OUTPUT_DIR"
-echo ""
-echo "截图目录:"
-ls -lh "$OUTPUT_DIR/screenshots/"
-echo ""
-echo "下一步:"
-echo "1. 用 AI 分析 transcript.txt 生成完整总结"
-echo "2. 查看/编辑：$OUTPUT_DIR/summary.md"
+# 截图状态
+[[ $(python3 -c "import json; print(len([x for x in json.load(open('$OSS_URLS_FILE')) if x.get('success')]))" 2>/dev/null || echo 0) -gt 0 ]] && echo "📸 截图：✅ 已上传" || echo "📸 截图：⚠️  本地"
 echo ""
