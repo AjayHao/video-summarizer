@@ -456,15 +456,33 @@ def generate_markdown(video_info: dict, ai_result: dict, screenshot_urls: list, 
     else:
         publish_date = datetime.now().strftime("%Y-%m-%d")
     
-    # 构建标签（正好 5 个）
-    tags = ["视频总结", "AI 分析"]
-    note_text = ai_result.get('note', '') if ai_result else ''
-    if '教程' in title or '教程' in note_text:
-        tags.append("教程")
-    if '技巧' in title or '方法' in note_text:
-        tags.append("技巧")
-    if 'OpenClaw' in title or 'OpenClaw' in note_text:
-        tags.append("OpenClaw")
+    # 构建标签（完全使用视频原始标签，尊重作者定义）
+    # 1. 从元数据提取原始标签
+    video_tags = metadata.get('tags', [])
+    
+    # 2. 筛选高质量标签（去除过长/过短，保留 2-6 字符）
+    filtered_tags = [t for t in video_tags if 2 <= len(t) <= 6]
+    
+    # 3. 去重并限制数量（最多 5 个）
+    seen = set()
+    unique_tags = []
+    for t in filtered_tags:
+        if t.lower() not in seen:
+            seen.add(t.lower())
+            unique_tags.append(t)
+            if len(unique_tags) >= 5:
+                break
+    
+    # 4. 不足 5 个时用默认值补齐
+    default_tags = ["视频总结", "AI 分析", "教程", "技巧", "知识分享"]
+    while len(unique_tags) < 5:
+        for t in default_tags:
+            if t not in unique_tags:
+                unique_tags.append(t)
+                if len(unique_tags) >= 5:
+                    break
+    
+    tags = unique_tags[:5]  # 确保正好 5 个
     
     # 格式化各个模块
     tags_md = format_tags(tags)
