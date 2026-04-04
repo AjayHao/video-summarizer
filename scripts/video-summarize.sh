@@ -246,7 +246,7 @@ check_progress() {
     return 1
 }
 
-echo "🎬 Video Summarizer v0.1.0"
+echo "🎬 Video Summarizer v0.1.2"
 echo ""
 
 # Step 1: 元数据
