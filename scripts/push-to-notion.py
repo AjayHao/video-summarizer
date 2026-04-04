@@ -66,9 +66,29 @@ def parse_markdown(md_file):
     publish_match = re.search(r'\*\*发布:\*\*\s*(.+)$', content, re.MULTILINE)
     publish_date = publish_match.group(1).strip() if publish_match else ""
     
-    # 提取封面图片 URL
+    # 提取封面图片 URL（优先从 Markdown 中提取）
     cover_match = re.search(r'!\[视频封面\]\(([^)]+)\)', content)
     cover_url = cover_match.group(1).strip() if cover_match else ""
+    
+    # 如果 Markdown 中没有封面，尝试从同级目录的 metadata.json 获取
+    if not cover_url:
+        md_dir = Path(md_file).parent
+        metadata_file = md_dir / "metadata.json"
+        if metadata_file.exists():
+            try:
+                with open(metadata_file, 'r', encoding='utf-8') as f:
+                    metadata = json.load(f)
+                cover_url = metadata.get('thumbnail', '')
+            except:
+                pass
+    
+    # 如果还没有封面，尝试使用第一张截图作为封面
+    if not cover_url:
+        md_dir = Path(md_file).parent
+        # 查找 OSS 截图链接（在 Markdown 中）
+        screenshot_match = re.search(r'!\[\d{2}:\d{2}:\d{2}\]\(([^)]+)\)', content)
+        if screenshot_match:
+            cover_url = screenshot_match.group(1).strip()
     
     # 从视频 URL 提取平台来源
     source = "Unknown"
@@ -511,19 +531,22 @@ def push_to_notion(md_file, database_id=None):
                     }
                 }
             ]
-        },
-        "Cover": {
+        }
+    }
+    
+    # 仅在封面 URL 有效时添加 Cover 字段
+    if data.get('cover_url'):
+        properties["Cover"] = {
             "files": [
                 {
                     "name": "封面图片",
                     "type": "external",
                     "external": {
-                        "url": data.get('cover_url', '')
+                        "url": data['cover_url']
                     }
                 }
             ]
         }
-    }
     
     # 创建页面（容错：如果字段不存在则移除后重试）
     print(f"📤 创建 Notion 页面...")
@@ -532,12 +555,11 @@ def push_to_notion(md_file, database_id=None):
     # 如果失败，分析错误原因并尝试修复
     if not page_id:
         print("⚠️  创建失败，尝试移除可选字段后重试...")
-        # 按优先级从低到高移除字段（Cover 是可选的，Source/PubDate/Length 次之）
-        for field in ["Cover", "Length", "PubDate", "Source"]:
-            if field in properties:
-                del properties[field]
-                print(f"   移除字段：{field}")
-        page_id, page_url = create_page_in_database(db_id, properties)
+        # 只移除 Cover 字段（封面是可选的，其他字段必须保留）
+        if "Cover" in properties:
+            del properties["Cover"]
+            print(f"   移除字段：Cover")
+            page_id, page_url = create_page_in_database(db_id, properties)
     
     if not page_id:
         return None, None
