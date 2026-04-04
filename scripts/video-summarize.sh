@@ -410,8 +410,15 @@ else
     echo "📝 Step 3: 文本提取..."
     save_progress "3" "running"
     
-    awk '/^WEBVTT/{next} /^[0-9]/{next} /^$/{next} /-->/ {next} {print}' "$SUBTITLE_FILE" | \
-        sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -v "^$" > "$OUTPUT_DIR/transcript.txt"
+    # 检查是否有 VTT 字幕文件
+    if [[ "$SUBTITLE_FILE" =~ \.vtt$ ]]; then
+        # VTT 格式：提取纯文本
+        awk '/^WEBVTT/{next} /^[0-9]/{next} /^$/{next} /-->/ {next} {print}' "$SUBTITLE_FILE" | \
+            sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -v "^$" > "$OUTPUT_DIR/transcript.txt"
+    else
+        # 纯文本格式（硅基流动等 API 返回）
+        cp "$SUBTITLE_FILE" "$OUTPUT_DIR/transcript.txt"
+    fi
     
     WORD_COUNT=$(wc -w < "$OUTPUT_DIR/transcript.txt")
     LINE_COUNT=$(wc -l < "$OUTPUT_DIR/transcript.txt")
