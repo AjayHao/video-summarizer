@@ -1,18 +1,120 @@
-# 抖音 Cookies 获取指南（方案 1 - 推荐）
+# 抖音 Cookies 获取指南（v0.1.4）
 
-## 🎯 为什么选择方案 1？
+## 🚀 快速开始（3 分钟）
 
-**方案 1：yt-dlp 浏览器读取** 是目前最灵活、最简单的方案。
+**前提条件**：
+- ✅ 已安装 yt-dlp（`yt-dlp --version`
+- ✅ 已在浏览器中登录抖音（手机扫码）
 
-### 优势对比
+**步骤**：
+```bash
+# 1. 获取 Cookies（只需一次）
+./douyin-login-v2.sh auto
 
-| 特性 | 方案 1 | 方案 2（Playwright） |
-|------|--------|----------------------|
-| 依赖 | ✅ 仅 yt-dlp | ❌ 需要系统库（sudo） |
-| 安装复杂度 | ⭐ 简单 | ⭐⭐⭐ 复杂 |
-| 需要 PC 登录 | ❌ 否（手机扫码即可） | ❌ 否 |
-| 适用环境 | ✅ 所有环境 | ⚠️ 需 sudo 权限 |
-| 维护成本 | ⭐ 低 | ⭐⭐ 中 |
+# 2. 处理视频（重复使用）
+./video-summarize.sh "https://v.douyin.com/xxx"
+```
+
+---
+
+## 📋 方案对比
+
+| 方案 | 复杂度 | 推荐度 | 说明 |
+|------|--------|--------|------|
+| **方案 1：浏览器读取** | ⭐ 简单 | ⭐⭐⭐ **推荐** | yt-dlp 自动读取，无需 sudo |
+| **方案 2：手动导出** | ⭐⭐ 中等 | ⭐⭐ 备用 | 使用浏览器扩展导出 |
+| **方案 3：Playwright** | ⭐⭐⭐ 复杂 | ❌ 已弃用 | 需要系统库（sudo 权限） |
+
+**当前采用**：方案 1（yt-dlp 浏览器读取）
+
+---
+
+## 🔧 详细操作
+
+### 方案 1：浏览器读取（推荐）
+
+**适用场景**：
+- ✅ 有图形界面的浏览器（Chrome/Firefox/Edge）
+- ✅ 已在浏览器中登录抖音
+
+**步骤**：
+```bash
+# 自动尝试所有浏览器
+./douyin-login-v2.sh auto
+
+# 或指定浏览器
+./douyin-login-v2.sh chrome
+./douyin-login-v2.sh firefox
+./douyin-login-v2.sh edge
+```
+
+**输出示例**：
+```
+🔍 尝试从 chrome 读取 Cookies...
+✅ 从 chrome 读取 Cookies 成功
+✅ Cookies 获取成功！
+📁 保存位置：/home/ajayhao/.cookies/douyin_cookies.txt
+```
+
+---
+
+### 方案 2：手动导出（备用）
+
+**适用场景**：
+- ✅ yt-dlp 无法读取 Cookies
+- ✅ Snap 版本浏览器
+- ✅ 无图形界面环境
+
+**步骤**：
+
+1. **安装浏览器扩展**
+   - Chrome/Edge：[Get cookies.txt LOCALLY](https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc)
+   - Firefox：[cookies.txt](https://addons.mozilla.org/en-US/firefox/addon/cookies-txt/)
+
+2. **导出 Cookies**
+   - 访问 https://www.douyin.com
+   - 确认已登录（手机扫码）
+   - 点击扩展图标 → Export
+   - 保存为 `douyin_cookies.txt`
+
+3. **移动到正确位置**
+   ```bash
+   mkdir -p ~/.cookies
+   mv ~/Downloads/douyin_cookies.txt ~/.cookies/douyin_cookies.txt
+   ```
+
+4. **验证**
+   ```bash
+   # 检查文件
+   ls -lh ~/.cookies/douyin_cookies.txt
+   
+   # 测试 Cookies
+   yt-dlp --cookies ~/.cookies/douyin_cookies.txt \
+          --simulate "https://v.douyin.com/bQ2chgMWotA/"
+   ```
+
+---
+
+### 特殊场景处理
+
+#### Snap 版本浏览器
+
+**问题**：Snap 版 Chromium/Firefox 使用沙盒目录，yt-dlp 无法自动读取
+
+**解决**：使用方案 2（手动导出）
+
+#### 无图形界面环境（服务器）
+
+**方案 A**：在本地电脑导出后上传
+```bash
+# 本地导出
+cat douyin_cookies.txt
+
+# 上传到服务器
+scp douyin_cookies.txt user@server:~/.cookies/douyin_cookies.txt
+```
+
+**方案 B**：使用浏览器扩展导出
 
 ---
 
