@@ -58,7 +58,8 @@ def transcribe_with_groq(audio_file: str) -> dict:
 def transcribe_with_siliconflow(audio_file: str) -> dict:
     """使用硅基流动 API 转录音频（阿里云 DashScope）"""
     import dashscope
-    from dashscope import AudioTranscriptionAsync
+    import requests
+    from pathlib import Path
     
     print("   🌐 使用硅基流动 API 转录 (SenseVoice)...")
     
@@ -66,26 +67,45 @@ def transcribe_with_siliconflow(audio_file: str) -> dict:
     dashscope.api_key = SILICONFLOW_API_KEY
     
     try:
-        # 上传音频文件到临时 URL（使用本地文件）
-        # 硅基流动支持直接上传文件
-        result = AudioTranscriptionAsync.call(
-            model="FunAudioLLM/SenseVoiceSmall",
-            format="mp3",
-            file=audio_file
-        )
+        # 方案：先上传文件获取 URL，再调用转录 API
+        # 1. 上传文件到 DashScope
+        upload_url = "https://dashscope.aliyuncs.com/api/v1/upload"
+        with open(audio_file, 'rb') as f:
+            files = {'file': f}
+            data = {'action': 'upload'}
+            upload_response = requests.post(upload_url, headers={
+                'Authorization': f'Bearer {SILICONFLOW_API_KEY}'
+            }, files=files, data=data)
         
-        if result.status_code == 200:
-            output = result.output
-            return {
-                'success': True,
-                'text': output.get('text', ''),
-                'segments': output.get('segments', [])
-            }
-        else:
-            return {
-                'success': False,
-                'error': f"硅基流动 API 错误：{result.status_code} - {result.message[:200] if hasattr(result, 'message') else 'Unknown'}"
-            }
+        if upload_response.status_code == 200:
+            upload_result = upload_response.json()
+            file_url = upload_result.get('data', {}).get('url', '')
+            
+            if file_url:
+                # 2. 调用转录 API
+                from dashscope.audio import asr
+                result = asr.Transcription.call(
+                    model="FunAudioLLM/SenseVoiceSmall",
+                    file_urls=file_url
+                )
+                
+                if result.status_code == 200:
+                    output = result.output
+                    return {
+                        'success': True,
+                        'text': output.get('text', ''),
+                        'segments': output.get('segments', [])
+                    }
+                else:
+                    return {
+                        'success': False,
+                        'error': f"硅基流动 API 错误：{result.status_code} - {result.message[:200] if hasattr(result, 'message') else 'Unknown'}"
+                    }
+        
+        return {
+            'success': False,
+            'error': f"文件上传失败：{upload_response.status_code} - {upload_response.text[:200]}"
+        }
     except Exception as e:
         return {
             'success': False,
