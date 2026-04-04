@@ -84,11 +84,12 @@ def parse_markdown(md_file):
     
     # 如果还没有封面，尝试使用第一张截图作为封面
     if not cover_url:
-        md_dir = Path(md_file).parent
         # 查找 OSS 截图链接（在 Markdown 中）
-        screenshot_match = re.search(r'!\[\d{2}:\d{2}:\d{2}\]\(([^)]+)\)', content)
-        if screenshot_match:
-            cover_url = screenshot_match.group(1).strip()
+        # 格式可能是 ![00:00:00](URL) 或 ![章节截图](URL)
+        screenshot_matches = re.findall(r'!\[[^\]]+\]\((https?://[^)]+)\)', content)
+        if screenshot_matches:
+            # 取第一张截图作为封面
+            cover_url = screenshot_matches[0].strip()
     
     # 从视频 URL 提取平台来源
     source = "Unknown"
