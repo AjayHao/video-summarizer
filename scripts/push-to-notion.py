@@ -121,10 +121,26 @@ def parse_markdown(md_file):
     note = note_match.group(1).strip() if note_match else ""
     
     # 提取 Tags
-    tags_match = re.search(r'\*\*Tags:\*\*\s*(.+)$', content, re.MULTILINE)
+    # 优先从 metadata.json 的原始标题中提取 #标签
     tags = []
-    if tags_match:
-        tags = re.findall(r'`([^`]+)`', tags_match.group(1))
+    raw_title = metadata.get('title', '')
+    if raw_title and '#' in raw_title:
+        # 简单可靠的方法：按 # 分割提取标签
+        parts = raw_title.split('#')
+        for part in parts[1:]:  # 跳过第一个（# 之前的内容）
+            tag = part.split('#')[0].strip()
+            if tag:
+                tags.append(tag)
+    
+    # 如果 metadata 中没有标签，从 Markdown 的 **Tags:** 行提取
+    if not tags:
+        tags_match = re.search(r'\*\*Tags:\*\*\s*(.+)$', content, re.MULTILINE)
+        if tags_match:
+            tags = re.findall(r'`([^`]+)`', tags_match.group(1))
+    
+    # 如果还是没有标签，使用默认标签
+    if not tags:
+        tags = ['视频总结', 'AI 分析', '教程', '技巧', '知识分享']
     
     # 提取 UP 主/作者
     # 优先从 Markdown 的 **UP 主:** 或 **Author:** 提取
@@ -165,21 +181,35 @@ def parse_markdown(md_file):
             publish_date = publish_match.group(1).strip()
     
     # 提取封面图片 URL
-    # 1. 从 metadata.json 的 thumbnail
-    # 2. 从 Markdown 的 ![视频封面](URL)
-    # 3. 从第一张截图
-    cover_url = metadata.get('thumbnail', '')
+    # 优先级：
+    # 1. Markdown 中的 ![视频封面](URL) - 可能是 OSS 链接
+    # 2. 第一张章节截图（OSS 链接，更可靠）
+    # 3. metadata.json 的 thumbnail（可能是抖音临时链接，会过期）
+    
+    cover_url = ''
+    
+    # 1. 优先从 Markdown 的 ![视频封面](URL) 提取
+    cover_match = re.search(r'!\[视频封面\]\(([^)]+)\)', content)
+    if cover_match:
+        cover_url = cover_match.group(1).strip()
+    
+    # 2. 如果没有，使用第一张章节截图（OSS 链接，更可靠）
     if not cover_url:
-        cover_match = re.search(r'!\[视频封面\]\(([^)]+)\)', content)
-        if cover_match:
-            cover_url = cover_match.group(1).strip()
-    if not cover_url:
-        # 查找 OSS 截图链接（在 Markdown 中）
-        # 格式可能是 ![00:00:00](URL) 或 ![章节截图](URL)
         screenshot_matches = re.findall(r'!\[[^\]]+\]\((https?://[^)]+)\)', content)
         if screenshot_matches:
-            # 取第一张截图作为封面
             cover_url = screenshot_matches[0].strip()
+    
+    # 3. 最后尝试 metadata.json 的 thumbnail
+    if not cover_url:
+        cover_url = metadata.get('thumbnail', '')
+    
+    # 如果封面 URL 是抖音临时链接（包含签名参数），优先使用截图
+    if cover_url and ('douyinpic.com' in cover_url or 'iesdouyin.com' in cover_url):
+        screenshot_matches = re.findall(r'!\[[^\]]+\]\((https?://[^)]+)\)', content)
+        if screenshot_matches:
+            # 抖音链接会过期，使用 OSS 截图更可靠
+            cover_url = screenshot_matches[0].strip()
+            print(f"   使用 OSS 截图替代抖音封面（避免链接过期）")
     
     return {
         'title': title,
