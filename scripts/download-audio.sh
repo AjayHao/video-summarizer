@@ -23,7 +23,7 @@ detect_platform() {
 
 PLATFORM=$(detect_platform)
 
-# 抖音平台特殊处理：使用专用下载工具
+# 抖音平台特殊处理：使用专用下载工具（优先）
 if [[ "$PLATFORM" == "douyin" ]]; then
     DOUYIN_SCRIPT="$SCRIPT_DIR/douyin_downloader.py"
     
@@ -45,8 +45,12 @@ if [[ "$PLATFORM" == "douyin" ]]; then
                 if ffmpeg -i "$TEMP_VIDEO" -vn -acodec libmp3lame -ab 128k "$OUTPUT_FILE" -y 2>/dev/null; then
                     rm -f "$TEMP_VIDEO"
                     echo "   ✅ 成功"
-                    exit 0
+                    exit 0  # 成功则直接退出，不执行 yt-dlp
+                else
+                    echo "   ⚠️  音频提取失败，回退到 yt-dlp"
                 fi
+            else
+                echo "   ⚠️  视频下载失败，回退到 yt-dlp"
             fi
             rm -f "$TEMP_VIDEO" 2>/dev/null
         fi
