@@ -613,6 +613,32 @@ if [[ -f "$OSS_SCRIPT" ]]; then
         echo "⚠️  OSS 上传失败，使用本地路径"
         echo "[]" > "$OSS_URLS_FILE"
     fi
+    
+    # 上传封面图
+    COVER_FILE="$OUTPUT_DIR/cover_url.txt"
+    echo "🖼️  上传封面图..." >> "$OSS_LOG_FILE"
+    python3 "$OSS_SCRIPT" thumbnail "$OUTPUT_DIR/metadata.json" \
+        --public --format json >> "$COVER_FILE" 2>> "$OSS_LOG_FILE"
+    
+    if [[ -f "$COVER_FILE" ]]; then
+        COVER_URL=$(python3 -c "import json; print(json.load(open('$COVER_FILE')).get('oss_url', ''))" 2>/dev/null)
+        if [[ -n "$COVER_URL" ]]; then
+            echo "✅ 封面上传成功：$COVER_URL" >> "$OSS_LOG_FILE"
+            # 更新元数据中的 thumbnail 字段
+            python3 << PYEOF >> "$OSS_LOG_FILE" 2>&1
+import json
+with open('$OUTPUT_DIR/metadata.json', 'r+', encoding='utf-8') as f:
+    data = json.load(f)
+    data['thumbnail'] = '$COVER_URL'
+    f.seek(0)
+    json.dump(data, f, ensure_ascii=False, indent=2)
+    f.truncate()
+print("✅ 元数据已更新")
+PYEOF
+        else
+            echo "⚠️  封面上传失败，使用原始 URL" >> "$OSS_LOG_FILE"
+        fi
+    fi
 else
     echo "⚠️  OSS 脚本不存在，使用本地路径"
     echo "[]" > "$OSS_URLS_FILE"

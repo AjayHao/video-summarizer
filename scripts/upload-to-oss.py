@@ -21,6 +21,7 @@
 import os
 import sys
 import re
+import json
 import argparse
 from pathlib import Path
 
@@ -251,10 +252,79 @@ def build_prefix(video_url: str = None, metadata_file: str = None) -> str:
     return prefix
 
 
+def upload_thumbnail(metadata_file: str, output_file: str = None, public: bool = True) -> dict:
+    """
+    上传视频封面图到 OSS
+    
+    Args:
+        metadata_file: 元数据 JSON 文件路径
+        output_file: 输出文件路径（可选，保存上传结果）
+        public: 是否公开访问
+    
+    Returns:
+        dict: {success: bool, oss_url: str, error: str}
+    """
+    try:
+        import requests
+        
+        # 读取元数据
+        with open(metadata_file, 'r', encoding='utf-8') as f:
+            metadata = json.load(f)
+        
+        thumbnail_url = metadata.get('thumbnail', '')
+        if not thumbnail_url:
+            return {'success': False, 'error': '无封面图 URL'}
+        
+        # 构建 OSS 路径
+        prefix = build_prefix(metadata_file=metadata_file)
+        remote_key = f"thumbnails/{prefix}/cover.jpg"
+        
+        # 下载封面图
+        print(f"🖼️  下载封面：{thumbnail_url[:50]}...", file=sys.stderr)
+        response = requests.get(thumbnail_url, timeout=15, stream=True)
+        if response.status_code != 200:
+            return {'success': False, 'error': f'HTTP {response.status_code}'}
+        
+        # 保存到临时文件
+        temp_file = '/tmp/thumbnail_temp.jpg'
+        with open(temp_file, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                f.write(chunk)
+        
+        # 上传到 OSS
+        print(f"☁️  上传封面到 OSS: {remote_key}", file=sys.stderr)
+        result = upload_to_oss(temp_file, remote_key, public=public)
+        
+        # 清理临时文件
+        if os.path.exists(temp_file):
+            os.remove(temp_file)
+        
+        if result['success']:
+            oss_url = result['url']
+            print(f"✅ 封面上传成功：{oss_url}", file=sys.stderr)
+            
+            # 保存结果
+            if output_file:
+                cover_result = {
+                    'success': True,
+                    'oss_url': oss_url,
+                    'remote_key': remote_key
+                }
+                with open(output_file, 'w', encoding='utf-8') as f:
+                    json.dump(cover_result, f, ensure_ascii=False, indent=2)
+            
+            return {'success': True, 'oss_url': oss_url}
+        else:
+            return result
+    
+    except Exception as e:
+        return {'success': False, 'error': f'异常：{str(e)}'}
+
+
 def main():
     parser = argparse.ArgumentParser(description='阿里云 OSS 图床上传工具')
-    parser.add_argument('action', choices=['upload', 'batch', 'auto'], 
-                       help='upload: 上传单文件 | batch: 批量上传目录 | auto: 自动识别平台')
+    parser.add_argument('action', choices=['upload', 'batch', 'auto', 'thumbnail'], 
+                       help='upload: 上传单文件 | batch: 批量上传目录 | auto: 自动识别平台 | thumbnail: 上传封面')
     parser.add_argument('path', help='文件路径或目录路径')
     parser.add_argument('--prefix', default=None, 
                        help='OSS 存储路径前缀（auto 模式自动识别）')
@@ -324,6 +394,24 @@ def main():
                 for r in results:
                     if r['success']:
                         print(f"  - {r['oss_url'][:70]}...")
+    
+    elif args.action == 'thumbnail':
+        # 上传封面图
+        metadata_file = args.metadata or args.path
+        output_file = args.path if args.path != metadata_file else None
+        
+        result = upload_thumbnail(metadata_file, output_file, args.public)
+        
+        if args.format == 'json':
+            import json
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+        else:
+            if result['success']:
+                print(f"✅ 封面上传成功")
+                print(f"📎 URL: {result['oss_url']}")
+            else:
+                print(f"❌ 封面上传失败：{result['error']}")
+                sys.exit(1)
     
     return 0
 
