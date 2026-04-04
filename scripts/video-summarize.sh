@@ -280,19 +280,22 @@ else
             VIDEO_INFO=$(python3 "$DOUYIN_SCRIPT" --link "$VIDEO_URL" --action info 2>&1)
             
             # 解析信息
-            VIDEO_ID=$(echo "$VIDEO_INFO" | grep "视频 ID" | cut -d' ' -f2)
-            TITLE=$(echo "$VIDEO_INFO" | grep "标题" | cut -d' ' -f2-)
-            DOWNLOAD_URL=$(echo "$VIDEO_INFO" | grep "下载链接" | cut -d' ' -f2)
+            VIDEO_ID=$(echo "$VIDEO_INFO" | grep "视频 ID" | awk '{print $2}')
+            TITLE=$(echo "$VIDEO_INFO" | grep "标题" | sed 's/标题：//')
+            AUTHOR=$(echo "$VIDEO_INFO" | grep "作者" | sed 's/作者：//')
+            DURATION_STR=$(echo "$VIDEO_INFO" | grep "时长" | sed 's/时长：//')
+            COVER_URL=$(echo "$VIDEO_INFO" | grep "封面" | sed 's/封面：//')
+            DOWNLOAD_URL=$(echo "$VIDEO_INFO" | grep "下载链接" | awk '{print $2}')
             
             # 创建元数据 JSON
             cat > "$OUTPUT_DIR/metadata.json" << METAEOF
 {
   "title": "$TITLE",
-  "uploader": "抖音用户",
+  "uploader": "$AUTHOR",
   "uploader_id": "$VIDEO_ID",
   "duration": 0,
-  "duration_string": "Unknown",
-  "thumbnail": "",
+  "duration_string": "$DURATION_STR",
+  "thumbnail": "$COVER_URL",
   "webpage_url": "$VIDEO_URL",
   "platform": "douyin",
   "download_url": "$DOWNLOAD_URL"

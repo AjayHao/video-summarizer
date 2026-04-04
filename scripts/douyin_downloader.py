@@ -75,6 +75,18 @@ class DouyinProcessor:
         self.api_base_url = api_base_url or DEFAULT_API_BASE_URL
         self.model = model or DEFAULT_MODEL
         self.temp_dir = Path(tempfile.mkdtemp())
+    
+    def _format_duration(self, seconds: float) -> str:
+        """格式化时长为 MM:SS 或 HH:MM:SS 格式"""
+        if not seconds or seconds <= 0:
+            return "Unknown"
+        hours = int(seconds // 3600)
+        minutes = int((seconds % 3600) // 60)
+        secs = int(seconds % 60)
+        if hours > 0:
+            return f"{hours}:{minutes:02d}:{secs:02d}"
+        else:
+            return f"{minutes}:{secs:02d}"
 
     def __del__(self):
         """清理临时目录"""
@@ -123,14 +135,33 @@ class DouyinProcessor:
         # 获取视频信息
         video_url = data["video"]["play_addr"]["url_list"][0].replace("playwm", "play")
         desc = data.get("desc", "").strip() or f"douyin_{video_id}"
-
+        
+        # 获取作者信息
+        author_info = data.get("author", {})
+        author_nickname = author_info.get("nickname", "抖音用户")
+        
+        # 获取视频时长（毫秒转秒）
+        duration_ms = data.get("video", {}).get("duration", 0)
+        duration_sec = duration_ms / 1000 if duration_ms else 0
+        
+        # 获取封面图
+        cover_url = data.get("video", {}).get("cover", {}).get("url_list", [""])[0] if data.get("video", {}).get("cover") else ""
+        
+        # 获取发布时间戳
+        create_time = data.get("create_time", 0)
+        
         # 替换文件名中的非法字符
         desc = re.sub(r'[\\/:*?"<>|]', '_', desc)
 
         return {
             "url": video_url,
             "title": desc,
-            "video_id": video_id
+            "video_id": video_id,
+            "author": author_nickname,
+            "duration": duration_sec,
+            "duration_string": self._format_duration(duration_sec),
+            "cover": cover_url,
+            "create_time": create_time
         }
 
     def download_video(self, video_info: dict, output_dir: Optional[Path] = None, show_progress: bool = True) -> Path:
@@ -454,6 +485,9 @@ def main():
             print(f"视频ID: {info['video_id']}")
             print(f"标题: {info['title']}")
             print(f"下载链接: {info['url']}")
+            print(f"作者：{info.get('author', '抖音用户')}")
+            print(f"时长：{info.get('duration_string', 'Unknown')}")
+            print(f"封面：{info.get('cover', '' )}")
             print("=" * 50)
 
         elif args.action == "download":
