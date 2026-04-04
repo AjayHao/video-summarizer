@@ -33,6 +33,47 @@ HEADERS = {
 
 def parse_markdown(md_file):
     """解析 Markdown 文件，提取关键信息"""
+    md_dir = Path(md_file).parent
+    metadata_file = md_dir / "metadata.json"
+    
+    # 优先从 metadata.json 获取元数据
+    metadata = {}
+    if metadata_file.exists():
+        try:
+            with open(metadata_file, 'r', encoding='utf-8') as f:
+                metadata = json.load(f)
+        except:
+            pass
+    
+    # 第一步：确定平台来源（最高优先级）
+    # 1. 从 metadata.json 的 platform 字段
+    # 2. 从视频 URL 推断
+    platform = metadata.get('platform', '')
+    video_url = metadata.get('webpage_url', '')
+    
+    # 平台映射
+    platform_map = {
+        'douyin': '抖音',
+        'bilibili': 'Bilibili',
+        'xiaohongshu': '小红书',
+        'youtube': 'YouTube',
+        'wechat': '微信视频'
+    }
+    source = platform_map.get(platform, 'Unknown')
+    
+    # 如果 metadata 中没有 platform，从 URL 推断
+    if source == 'Unknown' and video_url:
+        if "bilibili.com" in video_url or "b23.tv" in video_url:
+            source = "Bilibili"
+        elif "xiaohongshu.com" in video_url:
+            source = "小红书"
+        elif "douyin.com" in video_url or "iesdouyin.com" in video_url:
+            source = "抖音"
+        elif "youtube.com" in video_url or "youtu.be" in video_url:
+            source = "YouTube"
+        elif "channels.weixin.qq.com" in video_url:
+            source = "微信视频"
+    
     with open(md_file, 'r', encoding='utf-8') as f:
         content = f.read()
     
@@ -50,39 +91,50 @@ def parse_markdown(md_file):
     if tags_match:
         tags = re.findall(r'`([^`]+)`', tags_match.group(1))
     
-    # 提取 UP 主
-    author_match = re.search(r'\*\*Author:\*\*\s*(.+)$', content, re.MULTILINE)
-    author = author_match.group(1).strip() if author_match else ""
+    # 提取 UP 主/作者
+    # 优先从 Markdown 的 **UP 主:** 提取，其次从 metadata.json 获取
+    author = ""
+    author_match = re.search(r'\*\*UP 主:\*\*\s*(.+)$', content, re.MULTILINE)
+    if author_match:
+        author = author_match.group(1).strip()
+    else:
+        author_match = re.search(r'\*\*Author:\*\*\s*(.+)$', content, re.MULTILINE)
+        if author_match:
+            author = author_match.group(1).strip()
     
-    # 提取视频链接
-    link_match = re.search(r'\*\*链接:\*\*\s*(.+)$', content, re.MULTILINE)
-    video_url = link_match.group(1).strip() if link_match else ""
+    # 如果 Markdown 中没有，从 metadata.json 获取
+    if not author:
+        author = metadata.get('uploader', '')
+    
+    # 如果没有视频 URL，从 Markdown 提取
+    if not video_url:
+        link_match = re.search(r'\*\*链接:\*\*\s*(.+)$', content, re.MULTILINE)
+        video_url = link_match.group(1).strip() if link_match else ""
     
     # 提取时长
-    duration_match = re.search(r'\*\*时长:\*\*\s*(.+)$', content, re.MULTILINE)
-    duration = duration_match.group(1).strip() if duration_match else ""
+    # 优先从 metadata.json 获取，其次从 Markdown 提取
+    duration = metadata.get('duration_string', '')
+    if not duration or duration == 'Unknown':
+        duration_match = re.search(r'\*\*时长:\*\*\s*(.+)$', content, re.MULTILINE)
+        if duration_match:
+            duration = duration_match.group(1).strip()
     
     # 提取发布日期
-    publish_match = re.search(r'\*\*发布:\*\*\s*(.+)$', content, re.MULTILINE)
-    publish_date = publish_match.group(1).strip() if publish_match else ""
+    publish_date = metadata.get('upload_date', '')
+    if not publish_date:
+        publish_match = re.search(r'\*\*发布:\*\*\s*(.+)$', content, re.MULTILINE)
+        if publish_match:
+            publish_date = publish_match.group(1).strip()
     
-    # 提取封面图片 URL（优先从 Markdown 中提取）
-    cover_match = re.search(r'!\[视频封面\]\(([^)]+)\)', content)
-    cover_url = cover_match.group(1).strip() if cover_match else ""
-    
-    # 如果 Markdown 中没有封面，尝试从同级目录的 metadata.json 获取
+    # 提取封面图片 URL
+    # 1. 从 metadata.json 的 thumbnail
+    # 2. 从 Markdown 的 ![视频封面](URL)
+    # 3. 从第一张截图
+    cover_url = metadata.get('thumbnail', '')
     if not cover_url:
-        md_dir = Path(md_file).parent
-        metadata_file = md_dir / "metadata.json"
-        if metadata_file.exists():
-            try:
-                with open(metadata_file, 'r', encoding='utf-8') as f:
-                    metadata = json.load(f)
-                cover_url = metadata.get('thumbnail', '')
-            except:
-                pass
-    
-    # 如果还没有封面，尝试使用第一张截图作为封面
+        cover_match = re.search(r'!\[视频封面\]\(([^)]+)\)', content)
+        if cover_match:
+            cover_url = cover_match.group(1).strip()
     if not cover_url:
         # 查找 OSS 截图链接（在 Markdown 中）
         # 格式可能是 ![00:00:00](URL) 或 ![章节截图](URL)
@@ -90,20 +142,6 @@ def parse_markdown(md_file):
         if screenshot_matches:
             # 取第一张截图作为封面
             cover_url = screenshot_matches[0].strip()
-    
-    # 从视频 URL 提取平台来源
-    source = "Unknown"
-    if video_url:
-        if "bilibili.com" in video_url or "b23.tv" in video_url:
-            source = "Bilibili"
-        elif "xiaohongshu.com" in video_url:
-            source = "小红书"
-        elif "douyin.com" in video_url:
-            source = "抖音"
-        elif "youtube.com" in video_url or "youtu.be" in video_url:
-            source = "YouTube"
-        elif "channels.weixin.qq.com" in video_url:
-            source = "微信视频"
     
     return {
         'title': title,
