@@ -16,6 +16,7 @@ load_dotenv(Path.home() / '.openclaw' / '.env')
 
 # 配置
 GROQ_API_KEY = os.getenv('GROQ_API_KEY')
+SILICONFLOW_API_KEY = os.getenv('SILICONFLOW_API_KEY') or os.getenv('API_KEY')
 WHISPER_MODEL = os.getenv('WHISPER_MODEL', 'whisper-large-v3')
 USE_LOCAL_WHISPER = os.getenv('USE_LOCAL_WHISPER', 'false').lower() == 'true'
 
@@ -51,6 +52,44 @@ def transcribe_with_groq(audio_file: str) -> dict:
         return {
             'success': False,
             'error': f"Groq API 错误：{response.status_code} - {response.text[:200]}"
+        }
+
+
+def transcribe_with_siliconflow(audio_file: str) -> dict:
+    """使用硅基流动 API 转录音频（阿里云 DashScope）"""
+    import dashscope
+    from dashscope import AudioTranscriptionAsync
+    
+    print("   🌐 使用硅基流动 API 转录 (SenseVoice)...")
+    
+    # 设置 API Key
+    dashscope.api_key = SILICONFLOW_API_KEY
+    
+    try:
+        # 上传音频文件到临时 URL（使用本地文件）
+        # 硅基流动支持直接上传文件
+        result = AudioTranscriptionAsync.call(
+            model="FunAudioLLM/SenseVoiceSmall",
+            format="mp3",
+            file=audio_file
+        )
+        
+        if result.status_code == 200:
+            output = result.output
+            return {
+                'success': True,
+                'text': output.get('text', ''),
+                'segments': output.get('segments', [])
+            }
+        else:
+            return {
+                'success': False,
+                'error': f"硅基流动 API 错误：{result.status_code} - {result.message[:200] if hasattr(result, 'message') else 'Unknown'}"
+            }
+    except Exception as e:
+        return {
+            'success': False,
+            'error': f"硅基流动 API 异常：{str(e)}"
         }
 
 
@@ -116,16 +155,41 @@ def main():
     print("=" * 50)
     print()
     
-    # 选择转录方式
-    if GROQ_API_KEY and not USE_LOCAL_WHISPER:
-        print("📡 使用 Groq API (推荐)")
-        result = transcribe_with_groq(audio_file)
-    else:
+    # 选择转录方式：优先 Groq，失败则使用硅基流动
+    result = {'success': False, 'error': '未尝试'}
+    
+    if USE_LOCAL_WHISPER:
+        # 强制使用本地 Whisper
         print("🖥️ 使用本地 Whisper")
         result = transcribe_with_whisper(audio_file)
+    else:
+        # 优先尝试 Groq API
+        if GROQ_API_KEY:
+            print("📡 尝试 Groq API (首选)...")
+            result = transcribe_with_groq(audio_file)
+            
+            if not result['success']:
+                print(f"   ⚠️  Groq 失败：{result['error']}")
+        
+        # Groq 失败则尝试硅基流动
+        if not result['success'] and SILICONFLOW_API_KEY:
+            print("📡 尝试硅基流动 API (备用)...")
+            result = transcribe_with_siliconflow(audio_file)
+            
+            if not result['success']:
+                print(f"   ⚠️  硅基流动失败：{result['error']}")
+        
+        # 都失败则尝试本地 Whisper
+        if not result['success']:
+            print("🖥️ 尝试本地 Whisper (最后手段)...")
+            result = transcribe_with_whisper(audio_file)
     
     if not result['success']:
         print(f"❌ 转录失败：{result['error']}")
+        print("\n💡 提示：请配置以下任一 API Key：")
+        print("   - GROQ_API_KEY (Groq API)")
+        print("   - SILICONFLOW_API_KEY 或 API_KEY (硅基流动)")
+        print("   - 或安装本地 Whisper: pip install openai-whisper")
         sys.exit(1)
     
     print(f"   ✅ 转录完成")
