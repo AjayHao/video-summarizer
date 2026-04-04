@@ -52,7 +52,7 @@ def main():
         print("❌ Playwright 未安装")
         print()
         print("安装命令：")
-        print("  pip3 install playwright")
+        print("  pip3 install playwright --break-system-packages")
         print("  playwright install chromium")
         sys.exit(1)
     
@@ -60,35 +60,64 @@ def main():
     COOKIES_DIR.mkdir(parents=True, exist_ok=True)
     
     print("🌐 启动虚拟浏览器...")
-    print("   请使用抖音 APP 扫描二维码登录")
     print()
     
     try:
         with sync_playwright() as p:
-            # 启动浏览器
-            browser = p.chromium.launch(headless=False)
-            context = browser.new_context()
+            # 启动浏览器（禁用自动化特征，避免被检测）
+            browser = p.chromium.launch(
+                headless=False,
+                args=[
+                    '--disable-blink-features=AutomationControlled',
+                    '--no-sandbox'
+                ]
+            )
+            
+            # 设置用户代理
+            context = browser.new_context(
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                viewport={'width': 1280, 'height': 800}
+            )
             page = context.new_page()
             
-            # 访问抖音
+            # 访问抖音登录页
             print("📱 打开抖音登录页面...")
             page.goto("https://www.douyin.com")
             
-            # 等待登录（扫码或手机号）
+            # 等待页面加载
+            page.wait_for_load_state('networkidle')
+            
+            print()
+            print("=" * 50)
+            print("📲 请使用抖音 APP 扫描二维码登录")
+            print("=" * 50)
+            print()
+            print("操作步骤：")
+            print("1️⃣  打开抖音 APP")
+            print("2️⃣  点击右上角搜索图标")
+            print("3️⃣  点击扫码图标 📷")
+            print("4️⃣  扫描浏览器中的二维码")
+            print()
             print("⏳ 等待登录...")
-            print("   请在浏览器中完成登录操作")
             print()
             
-            # 检查是否已登录（通过检查特定元素）
+            # 等待登录（扫码或手机号）
             logged_in = False
-            for i in range(60):  # 最多等待 60 秒
+            max_wait = 180  # 最多等待 3 分钟
+            
+            for i in range(max_wait):
                 time.sleep(1)
                 
-                # 检查是否有登录后的特征（如用户头像）
+                # 检查是否已登录（通过检查特定元素）
                 try:
-                    # 抖音登录后的特征元素
-                    avatar = page.query_selector('img[class*="avatar"]')
-                    if avatar:
+                    # 抖音登录后的特征：用户头像、发布按钮等
+                    indicators = [
+                        page.query_selector('img[class*="avatar"]'),
+                        page.query_selector('button[class*="publish"]'),
+                        page.query_selector('div[class*="user-info"]'),
+                    ]
+                    
+                    if any(indicators):
                         logged_in = True
                         print("✅ 检测到登录成功！")
                         break
@@ -96,14 +125,18 @@ def main():
                     pass
                 
                 # 显示进度
-                if i % 10 == 0:
-                    print(f"   等待中... {i}s")
+                if i % 30 == 0 and i > 0:
+                    print(f"   等待中... {i}s / {max_wait}s")
             
             if not logged_in:
                 print()
                 print("⚠️  未检测到登录状态")
                 print("   请确认是否已完成登录")
-                input("   按回车键继续...")
+                print()
+                response = input("   是否继续？(y/n): ")
+                if response.lower() != 'y':
+                    browser.close()
+                    sys.exit(0)
             
             # 获取 Cookies
             print()
