@@ -79,7 +79,42 @@ def parse_markdown(md_file):
     
     # 提取标题
     title_match = re.search(r'^#\s+(.+)$', content, re.MULTILINE)
-    title = title_match.group(1).strip() if title_match else "视频总结"
+    raw_title = title_match.group(1).strip() if title_match else "视频总结"
+    
+    # 1. 从标题中移除标签（#xxx 格式）
+    # 匹配 # 开头，后面跟着非空白字符（包括中文和空格），直到遇到下一个 # 或字符串结尾
+    # 使用更精确的模式：# 后面跟着字母/数字/中文，可能包含空格
+    title = re.sub(r'#[A-Za-z0-9\u4e00-\u9fa5]+(?:\s+[A-Za-z0-9\u4e00-\u9fa5]+)*', '', raw_title)
+    # 清理多余空格
+    title = ' '.join(title.split()).strip()
+    
+    # 2. 截断过长的标题（保留前 2-3 个分句，总长不超过 40 字符）
+    if len(title) > 40:
+        # 优先按【】分割，保留主标题 + 第一个【】内容
+        if '[' in title or '[' in title:
+            brackets = re.findall(r'[【](.*?)[】]', title)
+            main_title = re.split(r'[【]', title)[0].strip()
+            
+            if main_title and brackets:
+                # 主标题按感叹号/逗号分割，只保留第一个短句
+                main_clauses = re.split(r'[!!！]', main_title)
+                short_main = main_clauses[0].strip()
+                
+                # 如果还是太长，继续按逗号分割
+                if len(short_main) > 25:
+                    short_main = re.split(r'[，,]', short_main)[0]
+                
+                title = f"{short_main}[{brackets[0]}]..."
+            else:
+                # 没有【】或主标题，直接截断
+                title = title[:30] + '...'
+        else:
+            # 没有【】，按感叹号/逗号分割
+            clauses = re.split(r'[!!！，,]', title)
+            if len(clauses) >= 2:
+                title = clauses[0] + '，' + clauses[1] + '...'
+            else:
+                title = title[:30] + '...'
     
     # 提取 Note
     note_match = re.search(r'## 📝 Note\n\n(.*?)(?=\n---|\n##)', content, re.DOTALL)
