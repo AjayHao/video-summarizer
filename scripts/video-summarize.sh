@@ -386,7 +386,8 @@ if [[ -z "$SUBTITLE_FILE" ]]; then
     log_warn "未找到可用字幕，启动 Plan B 语音转录..."
     
     AUDIO_FILE="$OUTPUT_DIR/audio.mp3"
-    SUBTITLE_FILE="$OUTPUT_DIR/audio.vtt"
+    # 硅基流动返回 txt 文件，Groq 返回 vtt 文件
+    SUBTITLE_FILE="$OUTPUT_DIR/audio.txt"
     
     # 下载音频
     "$SCRIPT_DIR/download-audio.sh" "$VIDEO_URL" "$AUDIO_FILE"
