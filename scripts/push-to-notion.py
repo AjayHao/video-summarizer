@@ -92,7 +92,8 @@ def parse_markdown(md_file):
         tags = re.findall(r'`([^`]+)`', tags_match.group(1))
     
     # 提取 UP 主/作者
-    # 优先从 Markdown 的 **UP 主:** 提取，其次从 metadata.json 获取
+    # 优先从 Markdown 的 **UP 主:** 或 **Author:** 提取
+    # 但如果值为"抖音用户"或"Unknown"，则从 metadata.json 获取真实作者
     author = ""
     author_match = re.search(r'\*\*UP 主:\*\*\s*(.+)$', content, re.MULTILINE)
     if author_match:
@@ -102,9 +103,11 @@ def parse_markdown(md_file):
         if author_match:
             author = author_match.group(1).strip()
     
-    # 如果 Markdown 中没有，从 metadata.json 获取
-    if not author:
-        author = metadata.get('uploader', '')
+    # 如果 Markdown 中的作者是默认值，从 metadata.json 获取真实作者
+    if not author or author in ['抖音用户', 'Unknown', 'N/A']:
+        metadata_author = metadata.get('uploader', '')
+        if metadata_author and metadata_author not in ['抖音用户', 'Unknown', 'N/A']:
+            author = metadata_author
     
     # 如果没有视频 URL，从 Markdown 提取
     if not video_url:
