@@ -39,10 +39,32 @@
 
 - **抖音完整支持（无需 Cookies）**：
   - 整合 agent-reach 抖音下载工具
-  - 复制 `douyin_downloader.py` 和 `douyin_processor.py` 到 scripts/
+  - 复制 `douyin_downloader.py` 到 scripts/
   - 修改 `video-summarize.sh` 自动识别抖音平台
   - 使用专用工具下载（无需 Cookies，无反爬）
   - 后续流程不变（Plan B + AI 分析 + 截图 + Notion）
+
+### 🐛 Bug 修复
+
+- **标题优化**：
+  - 从标题中移除 `#标签`（分离到 Tags 字段）
+  - 长标题智能截断（保留前 2-3 分句，添加 `...`）
+  - 标题长度：158 字符 → 26 字符
+
+- **封面图片修复**：
+  - 优先使用 OSS 截图（永久有效，避免抖音签名 URL 过期）
+  - 优先级：`![视频封面](URL)` → 第一张章节截图 → metadata.json thumbnail
+
+- **Tags 修复**：
+  - 从 metadata.json 原始标题提取 `#标签`
+  - 修复前：固定默认标签
+  - 修复后：AI 视频，AI 动画，AI 电影，AIGC，AI 教程
+
+### 🧹 代码清理
+
+- 删除冗余脚本：
+  - `douyin_processor.py` - MCP 服务器，主流程未使用
+  - `douyin-login-v2.sh` - v0.1.4 无需 Cookies，功能废弃
 
 ### 📊 平台支持更新
 

@@ -599,7 +599,7 @@ def main():
     output_file = sys.argv[3]
     
     print("=" * 50)
-    print("🧠 AI 字幕分析器 v0.1.2")
+    print("🧠 AI 字幕分析器 v0.1.4")
     print("=" * 50)
     print()
     
