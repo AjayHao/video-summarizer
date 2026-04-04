@@ -2,15 +2,15 @@
 
 🎬 将 B 站/YouTube 视频转换为结构化 Notion 风格总结
 
-**版本:** v0.1.1  
-**支持:** Plan A (字幕) + Plan B (语音转录)  
-**更新:** 2026-03-31 - 标签优化 & 脚本清理
+**版本:** v0.1.2  
+**支持:** Plan A (字幕) + Plan B (语音转录)
+**更新:** 2026-04-04 - 步骤顺序优化 & Bug 修复
 
 ---
 
 ## 🚀 快速开始
 
-### 1. 扫码登录（首次使用）
+### 1. 扫码登录(首次使用)
 
 ```bash
 # 获取 B 站 Cookies
@@ -85,8 +85,8 @@ python3 ~/.openclaw/skills/video-summarizer/scripts/push-to-notion.py \
 |--|--------|--------|
 | **触发** | 有字幕 | 无字幕 |
 | **来源** | 官方/自动字幕 | 语音转录 |
-| **速度** | 快（1-2 分钟） | 较慢（3-5 分钟） |
-| **准确率** | 高（90%+） | 中（80-90%） |
+| **速度** | 快(1-2 分钟) | 较慢(3-5 分钟) |
+| **准确率** | 高(90%+) | 中(80-90%) |
 
 ---
 
@@ -94,19 +94,19 @@ python3 ~/.openclaw/skills/video-summarizer/scripts/push-to-notion.py \
 
 ```
 output/
-├── summary.md              # 📝 最终总结（主要成果）
+├── summary.md              # 📝 最终总结(主要成果)
 ├── screenshot_urls.txt     # 🔗 截图 OSS 链接
 ├── metadata.json           # 📊 视频元数据
 ├── transcript.txt          # 📄 纯文本字幕
-├── screenshots/            # 📸 截图原图（本地备份）
-└── *.log                   # 📋 日志文件（verbose 模式）
+├── screenshots/            # 📸 截图原图(本地备份)
+└── *.log                   # 📋 日志文件(verbose 模式)
 ```
 
 ---
 
 ## 📊 OSS 路径规范
 
-格式：`/screenshots/<平台>/<视频 ID>_<时间戳>/`
+格式:`/screenshots/<平台>/<视频 ID>_<时间戳>/`
 
 | 平台 | 示例 |
 |------|------|
@@ -149,9 +149,9 @@ cat /tmp/output/ai_analysis.log
 
 ## 🎨 模板修改
 
-**位置：** `templates/summary.md`
+**位置:** `templates/summary.md`
 
-**示例：添加新章节**
+**示例:添加新章节**
 
 ```markdown
 ## 🆕 新增章节
@@ -161,7 +161,7 @@ cat /tmp/output/ai_analysis.log
 ---
 ```
 
-**测试：**
+**测试:**
 
 ```bash
 ./video-summarize.sh "URL" /tmp/test
@@ -175,10 +175,10 @@ cat /tmp/test/summary.md
 ```
 video-summarizer/
 ├── SKILL.md                  # 完整技能文档
-├── README.md                 # 快速入门（本文档）
+├── README.md                 # 快速入门(本文档)
 ├── prompt.json               # AI 提示词配置
 ├── scripts/
-│   ├── video-summarize.sh    # 主流程（Plan A/B 自动）
+│   ├── video-summarize.sh    # 主流程(Plan A/B 自动)
 │   ├── upload-to-oss.py      # OSS 图床上传
 │   ├── push-to-notion.py     # Notion 推送
 │   ├── analyze-subtitles-ai.py # AI 分析
@@ -196,12 +196,12 @@ video-summarizer/
 
 ## 📞 更多文档
 
-- **技能文档：** [SKILL.md](SKILL.md) - 完整架构、配置详解、优化方向
-- **提示词配置：** [prompt.json](prompt.json) - AI 分析参数
-- **模板说明：** [templates/README.md](templates/README.md) - 模板变量详解
+- **技能文档:** [SKILL.md](SKILL.md) - 完整架构、配置详解、优化方向
+- **提示词配置:** [prompt.json](prompt.json) - AI 分析参数
+- **模板说明:** [templates/README.md](templates/README.md) - 模板变量详解
 
 ---
 
-**版本:** v0.1.1  
-**发布:** 2026-03-28  
+**版本:** v0.1.2
+**发布:** 2026-04-04
 **维护人:** Ajay Hao

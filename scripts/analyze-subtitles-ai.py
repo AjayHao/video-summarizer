@@ -458,7 +458,7 @@ def generate_markdown(video_info: dict, ai_result: dict, screenshot_urls: list, 
     
     # 构建标签（完全使用视频原始标签，尊重作者定义）
     # 1. 从元数据提取原始标签
-    video_tags = metadata.get('tags', [])
+    video_tags = video_info.get('tags', [])
     
     # 2. 筛选高质量标签（去除过长/过短，保留 2-6 字符）
     filtered_tags = [t for t in video_tags if 2 <= len(t) <= 6]

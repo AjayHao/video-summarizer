@@ -1,8 +1,30 @@
 #!/bin/bash
-# video-summarize.sh - 视频总结生成完整流程 v0.1.0
+# video-summarize.sh - 视频总结生成完整流程 v0.1.2
 # 用法：./video-summarize.sh <视频 URL> [输出目录] [cookies 文件] [选项]
 
 set -e
+
+# ============== 错误处理与日志 ==============
+
+# 日志级别函数
+log_info() { echo "ℹ️  $*"; }
+log_warn() { echo "⚠️  $*"; }
+log_error() { echo "❌ $*"; }
+
+# 错误捕获 trap
+ERROR_LOG=""
+cleanup_on_error() {
+    local exit_code=$?
+    if [[ $exit_code -ne 0 ]]; then
+        log_error "脚本执行失败 (退出码：$exit_code)"
+        if [[ -n "$ERROR_LOG" && -f "$ERROR_LOG" ]]; then
+            log_error "详细错误日志：$ERROR_LOG"
+            [[ "$VERBOSE" == "true" ]] && tail -20 "$ERROR_LOG"
+        fi
+    fi
+    exit $exit_code
+}
+trap cleanup_on_error ERR
 
 # 平台标识映射（统一小写）
 # bilibili, xhs, douyin, youtube, wxvideo
@@ -266,7 +288,7 @@ else
 
 # 尝试 1: Cookies + 官方字幕
 if [[ -f "$COOKIES_FILE" ]]; then
-    echo "   尝试使用 Cookies 下载官方字幕..."
+    log_info "   尝试使用 Cookies 下载官方字幕..."
     if [[ "$VERBOSE" == "true" ]]; then
         yt-dlp --cookies "$COOKIES_FILE" \
                --write-sub --write-auto-sub \
@@ -310,7 +332,7 @@ fi
 
 # Plan B: 语音转录
 if [[ -z "$SUBTITLE_FILE" ]]; then
-    echo "   ⚠️  未找到可用字幕，启动 Plan B 语音转录..."
+    log_warn "未找到可用字幕，启动 Plan B 语音转录..."
     
     AUDIO_FILE="$OUTPUT_DIR/audio.mp3"
     SUBTITLE_FILE="$OUTPUT_DIR/audio.vtt"
@@ -365,7 +387,7 @@ else
     VIDEO_LOG="$OUTPUT_DIR/video_download.log"
 
 for i in 1 2 3; do
-    echo "   尝试 $i/3..."
+    log_info "   尝试 $i/3..."
     if [[ "$VERBOSE" == "true" ]]; then
         yt-dlp -f "bestvideo[height<=720]+bestaudio/best[height<=720]" \
                --merge-output-format mp4 \
@@ -400,12 +422,12 @@ echo "✅ 视频下载成功 | $(ls -lh "$VIDEO_FILE" | awk '{print $5}')"
     save_progress "4" "done"
 fi
 
-# Step 7: AI 分析（先生成 JSON，供截图使用）
+# Step 5: AI 分析（先生成 JSON，供截图使用）
 if check_progress && [[ -f "$OUTPUT_DIR/ai_result.json" ]]; then
-    echo "⏭️  Step 7 跳过（AI 结果已存在）"
+    echo "⏭️  Step 5 跳过（AI 结果已存在）"
 else
-    echo "🤖 Step 7: AI 分析（生成 JSON）..."
-    save_progress "7" "running"
+    echo "🤖 Step 5: AI 分析（生成 JSON）..."
+    save_progress "5" "running"
     
     AI_SCRIPT="$SCRIPT_DIR/analyze-subtitles-ai.py"
     AI_JSON_FILE="$OUTPUT_DIR/ai_result.json"
@@ -421,24 +443,35 @@ else
         
         if [[ -f "$AI_JSON_FILE" ]]; then
             echo "✅ AI 分析完成 | JSON: $AI_JSON_FILE"
+            AI_SUCCESS="true"
         else
-            echo "⚠️  AI 分析失败"
+            log_warn "AI 分析失败，使用基础版总结（无 AI 分析）"
             [[ "$VERBOSE" == "true" ]] && cat "$AI_LOG" | tail -10
-            exit 1
+            AI_SUCCESS="false"
+            # 创建空的 AI 结果文件，供后续步骤使用
+            cat > "$AI_JSON_FILE" << 'AIJSON'
+{
+  "note": "AI 分析失败，无法生成概述。",
+  "key_points": [],
+  "concepts": [],
+  "warnings": [],
+  "summary": "AI 分析失败，无法生成总结。"
+}
+AIJSON
         fi
     else
-        echo "⚠️  AI 脚本不存在"
-        exit 1
+        log_warn "AI 脚本不存在，使用基础版总结"
+        AI_SUCCESS="false"
     fi
-    save_progress "7" "done"
+    save_progress "5" "done"
 fi
 
-# Step 5: 截图（基于 AI 分析的时间戳）
+# Step 6: 截图（基于 AI 分析的时间戳）
 if check_progress && [[ -d "$OUTPUT_DIR/screenshots" && -n "$(ls -A "$OUTPUT_DIR/screenshots" 2>/dev/null)" ]]; then
-    echo "⏭️  Step 5 跳过"
+    echo "⏭️  Step 6 跳过"
 else
-    echo "🎬 Step 5: 截图（基于内容时间戳）..."
-    save_progress "5" "running"
+    echo "🎬 Step 6: 截图（基于 AI 分析结果）..."
+    save_progress "6" "running"
     
     mkdir -p "$OUTPUT_DIR/screenshots"
     
@@ -550,15 +583,15 @@ PYEOF
     printf '%s\n' "${SCREENSHOT_TIMES[@]}" > "$SCREENSHOT_TIMES_FILE"
     echo "   💾 截图时间戳已保存：$SCREENSHOT_TIMES_FILE"
     
-    save_progress "5" "done"
+    save_progress "6" "done"
 fi
 
-# Step 6: OSS 上传
+# Step 7: OSS 上传
 if check_progress && [[ -f "$OUTPUT_DIR/screenshot_urls.txt" ]]; then
-    echo "⏭️  Step 6 跳过"
+    echo "⏭️  Step 7 跳过"
 else
-    echo "☁️  Step 6: OSS 上传..."
-    save_progress "6" "running"
+    echo "☁️  Step 7: OSS 上传..."
+    save_progress "7" "running"
     
     OSS_SCRIPT="$SCRIPT_DIR/upload-to-oss.py"
     OSS_URLS_FILE="$OUTPUT_DIR/screenshot_urls.txt"
@@ -584,11 +617,11 @@ else
     echo "⚠️  OSS 脚本不存在，使用本地路径"
     echo "[]" > "$OSS_URLS_FILE"
 fi
-save_progress "6" "done"
+save_progress "7" "done"
 fi
 
-# Step 7.5: 渲染最终 Markdown（截图和 OSS 完成后）
-echo "📝 Step 7.5: 渲染 Markdown..."
+# Step 8: 渲染最终 Markdown（截图和 OSS 完成后）
+echo "📝 Step 8: 渲染 Markdown..."
 SUMMARY_FILE="$OUTPUT_DIR/summary.md"
 
 # 重新调用 AI 脚本，让它读取已上传的截图 URL 并渲染最终 Markdown
@@ -602,9 +635,9 @@ else
     [[ -f "$TEMP_SUMMARY" ]] && mv "$TEMP_SUMMARY" "$SUMMARY_FILE"
 fi
 
-# Step 8: 输出
-echo "📁 Step 8: 整理输出..."
-save_progress "8" "done"
+# Step 9: 输出
+echo "📁 Step 9: 整理输出..."
+save_progress "9" "done"
 
 echo ""
 echo "================================"
