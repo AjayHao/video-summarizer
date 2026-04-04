@@ -398,40 +398,68 @@ else
     VIDEO_FILE="$OUTPUT_DIR/video.mp4"
     DOWNLOAD_SUCCESS=false
     VIDEO_LOG="$OUTPUT_DIR/video_download.log"
-
-for i in 1 2 3; do
-    log_info "   尝试 $i/3..."
-    if [[ "$VERBOSE" == "true" ]]; then
-        yt-dlp -f "bestvideo[height<=720]+bestaudio/best[height<=720]" \
-               --merge-output-format mp4 \
-               -o "$VIDEO_FILE" "$VIDEO_URL" 2>&1 | tee -a "$VIDEO_LOG" && { DOWNLOAD_SUCCESS=true; break; } || {
-            rm -f "$VIDEO_FILE"* 2>/dev/null
-        }
-    else
-        yt-dlp -f "bestvideo[height<=720]+bestaudio/best[height<=720]" \
-               --merge-output-format mp4 \
-               -o "$VIDEO_FILE" "$VIDEO_URL" 2>/dev/null && { DOWNLOAD_SUCCESS=true; break; } || {
-            rm -f "$VIDEO_FILE"* 2>/dev/null
-        }
+    
+    # 抖音平台特殊处理：使用整合的抖音下载工具（无需 Cookies）
+    if [[ "$PLATFORM" == "douyin" ]]; then
+        log_info "抖音平台：使用专用下载工具（无需 Cookies）..."
+        DOUYIN_SCRIPT="$SCRIPT_DIR/douyin_downloader.py"
+        
+        if [[ -f "$DOUYIN_SCRIPT" ]]; then
+            # 获取视频信息和下载链接
+            python3 "$DOUYIN_SCRIPT" --link "$VIDEO_URL" --action info > "$VIDEO_LOG" 2>&1
+            
+            # 解析下载链接
+            DOWNLOAD_URL=$(grep "下载链接" "$VIDEO_LOG" | cut -d' ' -f2)
+            
+            if [[ -n "$DOWNLOAD_URL" ]]; then
+                log_info "   下载链接已获取"
+                # 下载视频
+                if curl -L -o "$VIDEO_FILE" "$DOWNLOAD_URL" 2>/dev/null; then
+                    DOWNLOAD_SUCCESS=true
+                    echo "✅ 抖音视频下载成功 | $(ls -lh "$VIDEO_FILE" | awk '{print $5}')" >> "$VIDEO_LOG"
+                fi
+            fi
+        else
+            log_warn "抖音下载脚本不存在，回退到 yt-dlp"
+        fi
     fi
-done
-
-if [[ "$DOWNLOAD_SUCCESS" != "true" ]]; then
-    echo "   降级尝试..."
-    if [[ "$VERBOSE" == "true" ]]; then
-        yt-dlp -f "best" --merge-output-format mp4 -o "$VIDEO_FILE" "$VIDEO_URL" 2>&1 | tee -a "$VIDEO_LOG" || {
-            echo "   ❌ 视频下载失败"
-            exit 1
-        }
-    else
-        yt-dlp -f "best" --merge-output-format mp4 -o "$VIDEO_FILE" "$VIDEO_URL" 2>/dev/null || {
-            echo "   ❌ 视频下载失败"
-            exit 1
-        }
+    
+    # 非抖音平台或抖音下载失败：使用 yt-dlp
+    if [[ "$DOWNLOAD_SUCCESS" != "true" ]]; then
+        for i in 1 2 3; do
+            log_info "   尝试 $i/3..."
+            if [[ "$VERBOSE" == "true" ]]; then
+                yt-dlp -f "bestvideo[height<=720]+bestaudio/best[height<=720]" \
+                       --merge-output-format mp4 \
+                       -o "$VIDEO_FILE" "$VIDEO_URL" 2>&1 | tee -a "$VIDEO_LOG" && { DOWNLOAD_SUCCESS=true; break; } || {
+                    rm -f "$VIDEO_FILE"* 2>/dev/null
+                }
+            else
+                yt-dlp -f "bestvideo[height<=720]+bestaudio/best[height<=720]" \
+                       --merge-output-format mp4 \
+                       -o "$VIDEO_FILE" "$VIDEO_URL" 2>/dev/null && { DOWNLOAD_SUCCESS=true; break; } || {
+                    rm -f "$VIDEO_FILE"* 2>/dev/null
+                }
+            fi
+        done
+        
+        if [[ "$DOWNLOAD_SUCCESS" != "true" ]]; then
+            echo "   降级尝试..."
+            if [[ "$VERBOSE" == "true" ]]; then
+                yt-dlp -f "best" --merge-output-format mp4 -o "$VIDEO_FILE" "$VIDEO_URL" 2>&1 | tee -a "$VIDEO_LOG" || {
+                    echo "   ❌ 视频下载失败"
+                    exit 1
+                }
+            else
+                yt-dlp -f "best" --merge-output-format mp4 -o "$VIDEO_FILE" "$VIDEO_URL" 2>/dev/null || {
+                    echo "   ❌ 视频下载失败"
+                    exit 1
+                }
+            fi
+        fi
     fi
-fi
-
-echo "✅ 视频下载成功 | $(ls -lh "$VIDEO_FILE" | awk '{print $5}')"
+    
+    echo "✅ 视频下载成功 | $(ls -lh "$VIDEO_FILE" | awk '{print $5}')"
     save_progress "4" "done"
 fi
 

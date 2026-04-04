@@ -33,17 +33,34 @@
 
 ---
 
-## 🔮 v0.1.4 计划 (TODO)
+## ✅ v0.1.4 (2026-04-05)
+
+### 🚀 新增功能
+
+- **抖音完整支持（无需 Cookies）**：
+  - 整合 agent-reach 抖音下载工具
+  - 复制 `douyin_downloader.py` 和 `douyin_processor.py` 到 scripts/
+  - 修改 `video-summarize.sh` 自动识别抖音平台
+  - 使用专用工具下载（无需 Cookies，无反爬）
+  - 后续流程不变（Plan B + AI 分析 + 截图 + Notion）
+
+### 📊 平台支持更新
+
+- ✅ Bilibili/YouTube：完整支持
+- ✅ 小红书：基本支持（Plan B）
+- ✅ **抖音：完整支持（无需 Cookies）**
+- 🚧 微信视频号：待测试
+
+---
+
+## 🔮 v0.1.5 计划 (TODO)
 
 ### 📋 待办事项
 
-- **抖音支持测试**：
-  - ✅ 创建抖音登录脚本（`douyin-login-v2.sh`）
-  - ✅ 优化 `download-audio.sh` 支持抖音
-  - ✅ 集成 Cookies 管理到 `video-summarize.sh`
-  - ✅ 文档编写完成
-  - ⏳ 实际视频测试（等待反爬解除）
-  - ⏳ 验证完整流程
+- **微信视频号支持**：
+  - 测试视频下载
+  - 验证 Plan B 语音转录
+  - 完善平台识别
 
 - **微信视频号支持**：
   - 测试视频下载
