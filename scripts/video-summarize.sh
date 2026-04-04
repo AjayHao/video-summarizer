@@ -263,23 +263,61 @@ echo "🎬 Video Summarizer v0.1.2"
 echo ""
 
 # Step 1: 元数据
-if check_progress && [[ -f "$OUTPUT_DIR/metadata.json" ]]; then
+if check_progress && [[ -f "$OUTPUT_DIR/metadata.json" && -s "$OUTPUT_DIR/metadata.json" ]]; then
     echo "⏭️  Step 1 跳过"
 else
     echo "📥 Step 1: 元数据..."
     save_progress "1" "running"
     
-    if [[ "$VERBOSE" == "true" ]]; then
-        yt-dlp --dump-json "$VIDEO_URL" > "$OUTPUT_DIR/metadata.json"
+    # 抖音平台特殊处理：使用专用工具获取元数据
+    if [[ "$PLATFORM" == "douyin" ]]; then
+        DOUYIN_SCRIPT="$SCRIPT_DIR/douyin_downloader.py"
+        
+        if [[ -f "$DOUYIN_SCRIPT" ]]; then
+            log_info "抖音平台：使用专用工具获取元数据..."
+            
+            # 获取视频信息
+            VIDEO_INFO=$(python3 "$DOUYIN_SCRIPT" --link "$VIDEO_URL" --action info 2>&1)
+            
+            # 解析信息
+            VIDEO_ID=$(echo "$VIDEO_INFO" | grep "视频 ID" | cut -d' ' -f2)
+            TITLE=$(echo "$VIDEO_INFO" | grep "标题" | cut -d' ' -f2-)
+            DOWNLOAD_URL=$(echo "$VIDEO_INFO" | grep "下载链接" | cut -d' ' -f2)
+            
+            # 创建元数据 JSON
+            cat > "$OUTPUT_DIR/metadata.json" << METAEOF
+{
+  "title": "$TITLE",
+  "uploader": "抖音用户",
+  "uploader_id": "$VIDEO_ID",
+  "duration": 0,
+  "duration_string": "Unknown",
+  "thumbnail": "",
+  "webpage_url": "$VIDEO_URL",
+  "platform": "douyin",
+  "download_url": "$DOWNLOAD_URL"
+}
+METAEOF
+            
+            echo "✅ 元数据完成 | 标题：$TITLE | 视频 ID: $VIDEO_ID"
+        else
+            log_warn "抖音下载脚本不存在，使用 yt-dlp"
+            yt-dlp --dump-json "$VIDEO_URL" > "$OUTPUT_DIR/metadata.json" 2>/dev/null || echo '{}' > "$OUTPUT_DIR/metadata.json"
+        fi
     else
-        yt-dlp --dump-json "$VIDEO_URL" > "$OUTPUT_DIR/metadata.json" 2>/dev/null
+        # 非抖音平台：使用 yt-dlp
+        if [[ "$VERBOSE" == "true" ]]; then
+            yt-dlp --dump-json "$VIDEO_URL" > "$OUTPUT_DIR/metadata.json"
+        else
+            yt-dlp --dump-json "$VIDEO_URL" > "$OUTPUT_DIR/metadata.json" 2>/dev/null
+        fi
     fi
     
-    TITLE=$(python3 -c "import json; print(json.load(open('$OUTPUT_DIR/metadata.json'))['title'])" 2>/dev/null || echo "Unknown")
-    UPLOADER=$(python3 -c "import json; print(json.load(open('$OUTPUT_DIR/metadata.json'))['uploader'])" 2>/dev/null || echo "Unknown")
-    DURATION=$(python3 -c "import json; print(json.load(open('$OUTPUT_DIR/metadata.json'))['duration_string'])" 2>/dev/null || echo "Unknown")
-    DURATION_SEC=$(python3 -c "import json; print(int(json.load(open('$OUTPUT_DIR/metadata.json'))['duration']))" 2>/dev/null || echo "0")
-    THUMBNAIL=$(python3 -c "import json; print(json.load(open('$OUTPUT_DIR/metadata.json'))['thumbnail'])" 2>/dev/null || echo "")
+    TITLE=$(python3 -c "import json; print(json.load(open('$OUTPUT_DIR/metadata.json')).get('title', 'Unknown'))" 2>/dev/null || echo "Unknown")
+    UPLOADER=$(python3 -c "import json; print(json.load(open('$OUTPUT_DIR/metadata.json')).get('uploader', 'Unknown'))" 2>/dev/null || echo "Unknown")
+    DURATION=$(python3 -c "import json; print(json.load(open('$OUTPUT_DIR/metadata.json')).get('duration_string', 'Unknown'))" 2>/dev/null || echo "Unknown")
+    DURATION_SEC=$(python3 -c "import json; print(int(json.load(open('$OUTPUT_DIR/metadata.json')).get('duration', 0)))" 2>/dev/null || echo "0")
+    THUMBNAIL=$(python3 -c "import json; print(json.load(open('$OUTPUT_DIR/metadata.json')).get('thumbnail', ''))" 2>/dev/null || echo "")
     
     echo "✅ 元数据完成 | 标题：$TITLE | UP 主：$UPLOADER | 时长：$DURATION"
     [[ "$VERBOSE" == "true" ]] && echo "   📄 $OUTPUT_DIR/metadata.json"
