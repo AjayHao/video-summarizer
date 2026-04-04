@@ -65,9 +65,21 @@ playwright install-deps chromium
 
 ## ✅ 推荐方案
 
-**当前环境（无 sudo）**：使用 **方案 1（yt-dlp 浏览器读取）**
+**⭐ 方案 1（yt-dlp 浏览器读取）** - **默认推荐**
 
-**有 sudo 权限环境**：可使用 **方案 2（Playwright）**
+**优势**：
+- ✅ 无需额外依赖（只需 yt-dlp）
+- ✅ 无需 sudo 权限
+- ✅ 支持 Chrome/Firefox/Edge
+- ✅ 用户只需手机扫码登录（无需 PC 登录账号）
+- ✅ 一次登录，Cookies 可用 30-90 天
+
+**使用**：
+```bash
+./douyin-login-v2.sh auto
+```
+
+**详细指南**：[douyin-login-guide.md](douyin-login-guide.md)
 
 ---
 
