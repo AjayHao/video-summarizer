@@ -33,7 +33,9 @@ trap cleanup_on_error ERR
 VIDEO_URL=""
 OUTPUT_DIR=""
 USER_SPECIFIED_OUTPUT="false"  # 标记用户是否手动指定了输出目录
-COOKIES_FILE="$HOME/.cookies/bilibili_cookies.txt"
+BILI_COOKIES_FILE="$HOME/.cookies/bilibili_cookies.txt"
+DOUYIN_COOKIES_FILE="$HOME/.cookies/douyin_cookies.txt"
+COOKIES_FILE=""  # 将根据平台自动选择
 VERBOSE="false"
 KEEP_VIDEO="false"
 AUTO_PUSH="false"
@@ -197,12 +199,23 @@ fi
 
 mkdir -p "$OUTPUT_DIR"
 
+# 根据平台选择 Cookies
+if [[ "$PLATFORM" == "douyin" ]]; then
+    COOKIES_FILE="$DOUYIN_COOKIES_FILE"
+    if [[ ! -f "$COOKIES_FILE" ]]; then
+        log_warn "抖音 Cookies 不存在：$COOKIES_FILE"
+        log_warn "请先运行：~/.openclaw/skills/video-summarizer/scripts/douyin-login.sh"
+    fi
+else
+    COOKIES_FILE="$BILI_COOKIES_FILE"
+fi
+
 # 进度文件
 PROGRESS_FILE="$OUTPUT_DIR/.progress.json"
 
 echo "📁 输出目录：$OUTPUT_DIR"
 echo "🏷️  平台：$PLATFORM | 视频 ID: $VIDEO_ID"
-echo ""
+echo "🍪 Cookies: ${COOKIES_FILE:-无}"
 
 # 检查环境变量（自动推送）
 if [[ "$AUTO_PUSH" == "true" ]]; then
