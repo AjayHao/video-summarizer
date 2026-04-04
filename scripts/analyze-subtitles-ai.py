@@ -414,8 +414,26 @@ def generate_markdown(video_info: dict, ai_result: dict, screenshot_urls: list, 
     
     # 提取视频元数据
     title = video_info.get('title', 'Unknown')
-    uploader = video_info.get('uploader', 'Unknown')
-    duration = video_info.get('duration_string', 'Unknown')
+    
+    # 上传者处理（小红书等平台可能只有 uploader_id）
+    uploader = video_info.get('uploader', '')
+    if not uploader:
+        uploader = video_info.get('uploader_id', 'Unknown')
+    # 如果是 ID 格式，去掉数字前缀
+    if uploader and uploader.startswith('6') and len(uploader) == 24:
+        uploader = '小红书用户'  # 或其他平台默认名
+    
+    # 时长处理（小红书等平台可能没有 duration_string）
+    duration = video_info.get('duration_string', '')
+    if not duration:
+        duration_sec = video_info.get('duration', 0)
+        if duration_sec:
+            mins = int(duration_sec // 60)
+            secs = int(duration_sec % 60)
+            duration = f"{mins}:{secs:02d}"
+        else:
+            duration = 'Unknown'
+    
     view_count = video_info.get('view_count', 0)
     like_count = video_info.get('like_count', 0)
     comment_count = video_info.get('comment_count', 0)
