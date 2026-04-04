@@ -6,6 +6,7 @@ set -e
 
 VIDEO_URL="$1"
 OUTPUT_FILE="${2:-/tmp/audio.mp3}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo "🎵 下载音频 (Plan B)..."
 
@@ -13,7 +14,7 @@ echo "🎵 下载音频 (Plan B)..."
 detect_platform() {
     if [[ "$VIDEO_URL" =~ (xiaohongshu\.com|xhslink\.com) ]]; then
         echo "xhs"
-    elif [[ "$VIDEO_URL" =~ (douyin\.com|iesdouyin\.com) ]]; then
+    elif [[ "$VIDEO_URL" =~ (douyin\.com|iesdouyin\.com|v\.douyin\.com) ]]; then
         echo "douyin"
     else
         echo "other"
@@ -21,6 +22,36 @@ detect_platform() {
 }
 
 PLATFORM=$(detect_platform)
+
+# 抖音平台特殊处理：使用专用下载工具
+if [[ "$PLATFORM" == "douyin" ]]; then
+    DOUYIN_SCRIPT="$SCRIPT_DIR/douyin_downloader.py"
+    
+    if [[ -f "$DOUYIN_SCRIPT" ]]; then
+        echo "   抖音平台：使用专用工具下载..."
+        
+        # 获取下载链接
+        VIDEO_INFO=$(python3 "$DOUYIN_SCRIPT" --link "$VIDEO_URL" --action info 2>&1)
+        DOWNLOAD_URL=$(echo "$VIDEO_INFO" | grep "下载链接" | cut -d' ' -f2)
+        
+        if [[ -n "$DOWNLOAD_URL" ]]; then
+            TEMP_VIDEO="/tmp/douyin_temp_$$.mp4"
+            
+            # 下载视频
+            if curl -sL -o "$TEMP_VIDEO" "$DOWNLOAD_URL"; then
+                echo "   ✅ 视频下载成功，提取音频..."
+                
+                # 提取音频
+                if ffmpeg -i "$TEMP_VIDEO" -vn -acodec libmp3lame -ab 128k "$OUTPUT_FILE" -y 2>/dev/null; then
+                    rm -f "$TEMP_VIDEO"
+                    echo "   ✅ 成功"
+                    exit 0
+                fi
+            fi
+            rm -f "$TEMP_VIDEO" 2>/dev/null
+        fi
+    fi
+fi
 
 # 尝试 1: 根据平台选择最佳格式
 echo "   尝试 1/3: 下载分离音轨..."
