@@ -1,10 +1,10 @@
 # Video Summarizer — 视频总结生成技能
 
-将 B 站/YouTube 视频转换为结构化 Notion 总结文档，自动上传截图，一键推送 Notion。
+将 B 站/YouTube/小红书/抖音视频转换为结构化 Notion 总结文档，自动上传截图，一键推送 Notion。
 
 **版本:** v0.1.3  
 **最后更新:** 2026-04-04  
-**状态:** ✅ 小红书/抖音优化 · 封面图上传 · 断点续跑 · 截图嵌入（30 张）
+**状态:** ✅ 多平台支持 · 封面图上传 · 断点续跑 · 截图嵌入（30 张）
 
 ---
 
@@ -15,7 +15,7 @@
 | **Bilibili** | ✅ 完整支持 | ✅ 官方 + 自动 | ✅ 支持 | 推荐扫码登录获取 Cookies |
 | **YouTube** | ✅ 完整支持 | ✅ 自动字幕 | ✅ 支持 | 需网络可达 |
 | **小红书** | ✅ 基本支持 | ❌ 无字幕 | ✅ 支持 | 依赖 Plan B 语音转录（已优化下载 + 封面上传） |
-| **抖音** | 🚧 待测试 | ❌ 无字幕 | ✅ 理论支持 | 计划 v0.1.4 测试验证 |
+| **抖音** | 🚧 脚本就绪 | ❌ 无字幕 | ✅ 支持 | 等待反爬解除后测试 |
 | **微信视频号** | 🚧 待测试 | ❌ 无字幕 | ✅ 支持 | 依赖 Plan B 语音转录 |
 
 ---
@@ -58,14 +58,30 @@ python3 ~/.openclaw/skills/video-summarizer/scripts/push-to-notion.py \
 
 ## 脚本清单
 
+### 核心脚本（4 个）
+
 | 脚本 | 功能 |
 |------|------|
 | `video-summarize.sh` | 主流程（Plan A/B 自动选择） |
 | `upload-to-oss.py` | 上传截图到 OSS |
 | `push-to-notion.py` | 推送 Notion |
 | `analyze-subtitles-ai.py` | AI 分析生成总结 |
+
+### 平台登录（2 个）
+
+| 脚本 | 功能 |
+|------|------|
 | `bili-login.sh` | B 站扫码登录 |
-| `check-config.sh` | 检查配置 |
+| `douyin-login-v2.sh` | 抖音 Cookies 获取（浏览器读取） |
+
+### 辅助工具（4 个）
+
+| 脚本 | 功能 |
+|------|------|
+| `check-config.sh` | 检查配置是否就绪 |
+| `convert-bili-cookie.py` | Cookies 格式转换 |
+| `download-audio.sh` | Plan B: 音频下载 |
+| `transcribe-audio.py` | Plan B: 语音转录 |
 
 ---
 
@@ -75,7 +91,49 @@ python3 ~/.openclaw/skills/video-summarizer/scripts/push-to-notion.py \
 |-----|--------|--------|
 | **字幕来源** | 平台官方字幕 | 语音转录 |
 | **准确率** | 90%+ | 80-90% |
-| **速度** | 快 | 较慢 |
+| **速度** | 快 (1-2 分钟) | 较慢 (3-5 分钟) |
+
+### 各平台 Plan A/B 使用情况
+
+| 平台 | Plan A | Plan B | 默认使用 | 说明 |
+|------|--------|--------|----------|------|
+| **Bilibili** | ✅ 官方 + 自动 | ✅ 备用 | Plan A | 推荐扫码登录获取官方字幕 |
+| **YouTube** | ✅ 自动字幕 | ✅ 备用 | Plan A | 需网络可达 |
+| **小红书** | ❌ 无 | ✅ 唯一 | Plan B | 依赖语音转录 |
+| **抖音** | ❌ 无 | ✅ 唯一 | Plan B | 依赖语音转录 |
+| **微信视频号** | ❌ 无 | ✅ 唯一 | Plan B | 依赖语音转录 |
+
+**Plan B 配置**：
+```bash
+# ~/.openclaw/.env
+GROQ_API_KEY=your_groq_api_key  # 语音转录 API（可选）
+```
+
+---
+
+## 📁 输出文件结构
+
+```
+output/
+├── summary.md              # 📝 最终总结 (主要成果)
+├── screenshot_urls.txt     # 🔗 截图 OSS 链接
+├── metadata.json           # 📊 视频元数据
+├── transcript.txt          # 📄 纯文本字幕
+├── screenshots/            # 📸 截图原图 (本地备份)
+└── *.log                   # 📋 日志文件 (verbose 模式)
+```
+
+## 📊 OSS 路径规范
+
+**格式**: `/screenshots/<平台>/<视频 ID>_<时间戳>/`
+
+| 平台 | 示例 |
+|------|------|
+| **bilibili** | `/screenshots/bilibili/BV1eTPEzNEqf_20260326_010000/` |
+| **douyin** | `/screenshots/douyin/7234567890_20260326_010000/` |
+| **xhs** | `/screenshots/xhs/abc123_20260326_010000/` |
+| **youtube** | `/screenshots/youtube/dQw4w9WgXcQ_20260326_010000/` |
+| **wxvideo** | `/screenshots/wxvideo/123456_20260326_010000/` |
 
 ---
 
@@ -94,7 +152,7 @@ NOTION_VIDEO_SUMMARY_DATABASE_ID=your_database_id
 # AI 分析
 DASHSCOPE_API_KEY=your_dashscope_api_key
 
-# Plan B 可选
+# Plan B 可选（语音转录）
 GROQ_API_KEY=your_groq_api_key
 ```
 

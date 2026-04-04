@@ -1,10 +1,10 @@
 # Video Summarizer
 
-🎬 将 B 站/YouTube 视频转换为结构化 Notion 风格总结
+🎬 将 B 站/YouTube/小红书/抖音视频转换为结构化 Notion 风格总结
 
 **版本:** v0.1.3  
 **支持:** Plan A (字幕) + Plan B (语音转录)
-**更新:** 2026-04-04 - 小红书/抖音优化 & 封面图上传
+**更新:** 2026-04-04 - 多平台支持 & 封面图上传
 
 ---
 
@@ -15,14 +15,14 @@
 | **Bilibili** | ✅ 完整支持 | ✅ 官方 + 自动 | ✅ 支持 | 推荐扫码登录获取 Cookies |
 | **YouTube** | ✅ 完整支持 | ✅ 自动字幕 | ✅ 支持 | 需网络可达 |
 | **小红书** | ✅ 基本支持 | ❌ 无字幕 | ✅ 支持 | 依赖 Plan B 语音转录（已优化下载 + 封面上传） |
-| **抖音** | 🚧 待测试 | ❌ 无字幕 | ✅ 理论支持 | 计划 v0.1.4 测试验证 |
+| **抖音** | 🚧 脚本就绪 | ❌ 无字幕 | ✅ 支持 | 等待反爬解除后测试 |
 | **微信视频号** | 🚧 待测试 | ❌ 无字幕 | ✅ 支持 | 依赖 Plan B 语音转录 |
 
 ---
 
 ## 🚀 快速开始
 
-### 1. 扫码登录(首次使用)
+### 1. 扫码登录 (首次使用)
 
 ```bash
 # 获取 B 站 Cookies
@@ -93,12 +93,24 @@ python3 ~/.openclaw/skills/video-summarizer/scripts/push-to-notion.py \
 
 ## 🎯 Plan A vs Plan B
 
+### 对比表
+
 | | Plan A | Plan B |
 |--|--------|--------|
 | **触发** | 有字幕 | 无字幕 |
 | **来源** | 官方/自动字幕 | 语音转录 |
-| **速度** | 快(1-2 分钟) | 较慢(3-5 分钟) |
-| **准确率** | 高(90%+) | 中(80-90%) |
+| **速度** | 快 (1-2 分钟) | 较慢 (3-5 分钟) |
+| **准确率** | 高 (90%+) | 中 (80-90%) |
+
+### 各平台使用情况
+
+| 平台 | Plan A | Plan B | 默认 |
+|------|--------|--------|------|
+| **Bilibili** | ✅ 官方 + 自动 | ✅ 备用 | Plan A |
+| **YouTube** | ✅ 自动字幕 | ✅ 备用 | Plan A |
+| **小红书** | ❌ 无 | ✅ 唯一 | Plan B |
+| **抖音** | ❌ 无 | ✅ 唯一 | Plan B |
+| **微信视频号** | ❌ 无 | ✅ 唯一 | Plan B |
 
 ---
 
@@ -106,12 +118,12 @@ python3 ~/.openclaw/skills/video-summarizer/scripts/push-to-notion.py \
 
 ```
 output/
-├── summary.md              # 📝 最终总结(主要成果)
+├── summary.md              # 📝 最终总结 (主要成果)
 ├── screenshot_urls.txt     # 🔗 截图 OSS 链接
 ├── metadata.json           # 📊 视频元数据
 ├── transcript.txt          # 📄 纯文本字幕
-├── screenshots/            # 📸 截图原图(本地备份)
-└── *.log                   # 📋 日志文件(verbose 模式)
+├── screenshots/            # 📸 截图原图 (本地备份)
+└── *.log                   # 📋 日志文件 (verbose 模式)
 ```
 
 ---
@@ -163,7 +175,7 @@ cat /tmp/output/ai_analysis.log
 
 **位置:** `templates/summary.md`
 
-**示例:添加新章节**
+**示例：添加新章节**
 
 ```markdown
 ## 🆕 新增章节
@@ -187,10 +199,10 @@ cat /tmp/test/summary.md
 ```
 video-summarizer/
 ├── SKILL.md                  # 完整技能文档
-├── README.md                 # 快速入门(本文档)
+├── README.md                 # 快速入门 (本文档)
 ├── prompt.json               # AI 提示词配置
 ├── scripts/
-│   ├── video-summarize.sh    # 主流程(Plan A/B 自动)
+│   ├── video-summarize.sh    # 主流程 (Plan A/B 自动)
 │   ├── upload-to-oss.py      # OSS 图床上传
 │   ├── push-to-notion.py     # Notion 推送
 │   ├── analyze-subtitles-ai.py # AI 分析
@@ -198,6 +210,7 @@ video-summarizer/
 │   ├── transcribe-audio.py   # Plan B: 语音转录
 │   ├── check-config.sh       # 配置检查
 │   ├── bili-login.sh         # B 站扫码登录
+│   ├── douyin-login-v2.sh    # 抖音 Cookies 获取
 │   └── convert-bili-cookie.py # Cookies 格式转换
 └── templates/
     ├── summary.md            # 总结文档模板
