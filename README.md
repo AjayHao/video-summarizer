@@ -91,7 +91,7 @@ cat output/summary.md
 ## 📚 详细文档
 
 - **[SKILL.md](SKILL.md)** - 完整技能文档（平台配置、架构说明、故障排查）
-- **[CHANGELOG.md](CHANGELOG.md)** - 版本历史
+- **[RELEASE.md](RELEASE.md)** - 发布说明
 
 ---
 

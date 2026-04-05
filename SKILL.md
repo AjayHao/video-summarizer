@@ -479,7 +479,7 @@ cat /tmp/output/error.log
 ## 📞 更多文档
 
 - **快速入门**: [README.md](README.md) - 5 分钟上手
-- **变更历史**: [CHANGELOG.md](CHANGELOG.md) - 版本演进
+- **发布说明**: [RELEASE.md](RELEASE.md) - v1.0.0 详细说明
 - **提示词配置**: [prompt.json](prompt.json) - AI 分析参数
 
 ---
