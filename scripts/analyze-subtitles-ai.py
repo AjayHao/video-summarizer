@@ -402,7 +402,7 @@ def load_screenshot_times(output_dir: str) -> list:
     return times
 
 
-def generate_markdown(video_info: dict, ai_result: dict, screenshot_urls: list, screenshot_times: list = None) -> str:
+def generate_markdown(video_info: dict, ai_result: dict, screenshot_urls: list, screenshot_times: list = None, cover_url: str = None) -> str:
     """
     使用模板生成 Markdown 格式的总结
     
@@ -410,6 +410,7 @@ def generate_markdown(video_info: dict, ai_result: dict, screenshot_urls: list, 
     
     Args:
         screenshot_times: 截图时间戳列表（从 screenshot_times.txt 读取），如果为 None 则自动计算
+        cover_url: 封面图 URL（优先使用 OSS 上传后的链接）
     """
     
     # 提取视频元数据
@@ -419,15 +420,15 @@ def generate_markdown(video_info: dict, ai_result: dict, screenshot_urls: list, 
     uploader = video_info.get('uploader', '')
     if not uploader:
         uploader = video_info.get('uploader_id', 'Unknown')
-    # 如果是 ID 格式，去掉数字前缀
-    if uploader and uploader.startswith('6') and len(uploader) == 24:
+    # 如果是 ID 格式（16 进制字符串），显示为平台用户
+    if uploader and re.match(r'^[0-9a-f]{16,}$', uploader, re.IGNORECASE):
         uploader = '小红书用户'  # 或其他平台默认名
     
     # 时长处理（小红书等平台可能没有 duration_string）
     duration = video_info.get('duration_string', '')
     if not duration:
         duration_sec = video_info.get('duration', 0)
-        if duration_sec:
+        if duration_sec and duration_sec > 0:
             mins = int(duration_sec // 60)
             secs = int(duration_sec % 60)
             duration = f"{mins}:{secs:02d}"
@@ -437,7 +438,8 @@ def generate_markdown(video_info: dict, ai_result: dict, screenshot_urls: list, 
     view_count = video_info.get('view_count', 0)
     like_count = video_info.get('like_count', 0)
     comment_count = video_info.get('comment_count', 0)
-    thumbnail = video_info.get('thumbnail', '')
+    # 封面 URL：优先使用传入的 cover_url 参数（OSS 上传后的链接）
+    thumbnail = cover_url if cover_url else video_info.get('thumbnail', '')
     webpage_url = video_info.get('webpage_url', '')
     upload_date = video_info.get('upload_date', '')
     
@@ -474,12 +476,22 @@ def generate_markdown(video_info: dict, ai_result: dict, screenshot_urls: list, 
     else:
         publish_date = datetime.now().strftime("%Y-%m-%d")
     
-    # 构建标签（完全使用视频原始标签，尊重作者定义）
-    # 1. 从元数据提取原始标签
+    # 构建标签（四层策略：标题 hashtag → 元数据 tags → AI 关键词 → 默认值）
+    # 1. 从标题提取 hashtag（兼容抖音/小红书等平台）
+    title = video_info.get('title', '')
+    hashtag_pattern = re.compile(r'#([\w\u4e00-\u9fa5]+)')
+    hashtag_tags = hashtag_pattern.findall(title)
+    print(f"   🏷️  从标题提取 hashtag: {hashtag_tags}", file=sys.stderr)
+    
+    # 2. 从元数据提取原始标签
     video_tags = video_info.get('tags', [])
     
-    # 2. 筛选高质量标签（去除过长/过短，保留 2-6 字符）
-    filtered_tags = [t for t in video_tags if 2 <= len(t) <= 6]
+    # 合并 hashtag 和元数据 tags（hashtag 优先）
+    all_tags = hashtag_tags + video_tags
+    
+    # 3. 筛选高质量标签（去除过长/过短，保留 2-15 字符）
+    # 放宽限制以兼容英文标签（如 "openclaw" 8 字符）
+    filtered_tags = [t for t in all_tags if 2 <= len(t) <= 15]
     
     # 3. 去重并限制数量（最多 5 个）
     seen = set()
@@ -491,7 +503,48 @@ def generate_markdown(video_info: dict, ai_result: dict, screenshot_urls: list, 
             if len(unique_tags) >= 5:
                 break
     
-    # 4. 不足 5 个时用默认值补齐
+    # 调试日志：输出原始 tags
+    print(f"   🏷️  原始 tags: {video_tags} → 筛选后：{unique_tags}", file=sys.stderr)
+    
+    # 4. 如果不足 5 个，从 AI 分析结果提取关键词补全
+    if len(unique_tags) < 5 and ai_result:
+        print(f"   🏷️  从 AI 结果提取关键词 (当前{len(unique_tags)}个)...", file=sys.stderr)
+        # 4.1 从关键概念 (concepts) 提取术语
+        concepts = ai_result.get('concepts', [])
+        print(f"      - concepts 数量：{len(concepts)}", file=sys.stderr)
+        for concept in concepts:
+            term = concept.get('term', '')
+            if term and 2 <= len(term) <= 15 and term.lower() not in seen:
+                seen.add(term.lower())
+                unique_tags.append(term)
+                print(f"      - 添加 concept 标签：{term}", file=sys.stderr)
+                if len(unique_tags) >= 5:
+                    break
+        
+        # 4.2 从核心要点标题提取关键词（去除 emoji 和通用词）
+        if len(unique_tags) < 5:
+            generic_words = {'问题', '方法', '技巧', '总结', '分析', '介绍', '说明', '如何', '什么'}
+            key_points = ai_result.get('key_points', [])
+            print(f"      - key_points 数量：{len(key_points)}", file=sys.stderr)
+            for point in key_points:
+                point_title = point.get('title', '')  # 修复：避免覆盖外部的 title 变量
+                # 简单分词：按空格/标点分割
+                words = re.split(r'[\s,，.。:：!！?？]+', point_title)
+                for word in words:
+                    word = word.strip()
+                    if (2 <= len(word) <= 15 and 
+                        word.lower() not in seen and 
+                        word not in generic_words and
+                        not re.match(r'^[\d]+$', word)):  # 排除纯数字
+                        seen.add(word.lower())
+                        unique_tags.append(word)
+                        print(f"      - 添加 key_point 标签：{word}", file=sys.stderr)
+                        if len(unique_tags) >= 5:
+                            break
+    elif len(unique_tags) < 5:
+        print(f"   🏷️  AI 结果为空，跳过关键词提取", file=sys.stderr)
+    
+    # 5. 仍不足 5 个时用默认值补齐
     default_tags = ["视频总结", "AI 分析", "教程", "技巧", "知识分享"]
     while len(unique_tags) < 5:
         for t in default_tags:
@@ -562,6 +615,7 @@ def generate_markdown(video_info: dict, ai_result: dict, screenshot_urls: list, 
     for key, value in format_dict.items():
         md = md.replace('{' + key + '}', str(value))
     
+    
     # 替换核心要点部分（整个区块替换）
     key_points_pattern = r'## 🎯 核心要点\n\n(.*?)\n\n---'
     key_points_replacement = f"## 🎯 核心要点\n\n{key_points_md}\n\n---"
@@ -627,9 +681,20 @@ def main():
         if screenshot_times:
             print(f"   🕐 加载截图时间戳：{len(screenshot_times)} 个")
         
+        # 加载 OSS 封面 URL
+        cover_url_file = os.path.join(output_dir, 'cover_url.txt')
+        oss_cover_url = None
+        if os.path.exists(cover_url_file):
+            try:
+                with open(cover_url_file, 'r', encoding='utf-8') as f:
+                    cover_data = json.load(f)
+                    oss_cover_url = cover_data.get('oss_url', '')
+            except:
+                pass
+        
         # 生成 Markdown
         print("📝 生成结构化总结...")
-        md_content = generate_markdown(video_info, ai_result, screenshot_urls, screenshot_times)
+        md_content = generate_markdown(video_info, ai_result, screenshot_urls, screenshot_times, oss_cover_url)
         
         # 保存文件
         with open(output_file, 'w', encoding='utf-8') as f:

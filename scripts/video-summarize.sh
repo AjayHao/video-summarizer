@@ -7,27 +7,26 @@ set -e
 # ============== 错误处理与日志 ==============
 
 # 日志级别函数
-log_info() { echo "ℹ️  $*"; }
-log_warn() { echo "⚠️  $*"; }
-log_error() { echo "❌ $*"; }
+log_info() { echo "ℹ️  $*"; echo "[INFO] $(date '+%Y-%m-%d %H:%M:%S') $*" >> "$ERROR_LOG" 2>/dev/null; }
+log_warn() { echo "⚠️  $*"; echo "[WARN] $(date '+%Y-%m-%d %H:%M:%S') $*" >> "$ERROR_LOG" 2>/dev/null; }
+log_error() { echo "❌ $*"; echo "[ERROR] $(date '+%Y-%m-%d %H:%M:%S') $*" >> "$ERROR_LOG" 2>/dev/null; }
+log_debug() { [[ "$VERBOSE" == "true" ]] && echo "🔍 $*"; [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] $(date '+%Y-%m-%d %H:%M:%S') $*" >> "$ERROR_LOG" 2>/dev/null; }
 
 # 错误捕获 trap
-ERROR_LOG=""
+ERROR_LOG="$OUTPUT_DIR/error.log"  # 在 OUTPUT_DIR 确定后设置
 cleanup_on_error() {
     local exit_code=$?
-    if [[ $exit_code -ne 0 ]]; then
+    if [[ $exit_code -ne 0 && -n "$ERROR_LOG" && -f "$ERROR_LOG" ]]; then
         log_error "脚本执行失败 (退出码：$exit_code)"
-        if [[ -n "$ERROR_LOG" && -f "$ERROR_LOG" ]]; then
-            log_error "详细错误日志：$ERROR_LOG"
-            [[ "$VERBOSE" == "true" ]] && tail -20 "$ERROR_LOG"
-        fi
+        log_error "详细错误日志：$ERROR_LOG"
+        [[ "$VERBOSE" == "true" ]] && tail -30 "$ERROR_LOG"
     fi
     exit $exit_code
 }
 trap cleanup_on_error ERR
 
 # 平台标识映射（统一小写）
-# bilibili, xhs, douyin, youtube, wxvideo
+# bilibili, xhs, douyin, youtube
 
 # 解析参数
 VIDEO_URL=""
@@ -99,8 +98,8 @@ extract_platform() {
         return
     fi
     
-    # 抖音：douyin.com 或 iesdouyin.com
-    if [[ "$url" =~ (douyin\.com|iesdouyin\.com) ]]; then
+    # 抖音：douyin.com、iesdouyin.com 或 v.douyin.com（短链）
+    if [[ "$url" =~ (douyin\.com|iesdouyin\.com|v\.douyin\.com) ]]; then
         echo "douyin"
         return
     fi
@@ -108,12 +107,6 @@ extract_platform() {
     # YouTube：youtube.com 或 youtu.be
     if [[ "$url" =~ (youtube\.com|youtu\.be) ]]; then
         echo "youtube"
-        return
-    fi
-    
-    # 微信视频：channels.weixin.qq.com
-    if [[ "$url" =~ (channels\.weixin\.qq\.com|mp\.weixin\.qq\.com) ]]; then
-        echo "wxvideo"
         return
     fi
     
@@ -187,25 +180,26 @@ extract_video_id() {
 }
 
 # 生成输出目录
+PLATFORM=$(extract_platform "$VIDEO_URL")
+VIDEO_ID=$(extract_video_id "$VIDEO_URL" "$PLATFORM")
+
 if [[ "$USER_SPECIFIED_OUTPUT" == "true" ]]; then
     # 用户手动指定了目录，直接使用
     : # OUTPUT_DIR 已设置
 else
     # 自动生成：/tmp/video-summarizer/<平台>/<视频 ID>
-    PLATFORM=$(extract_platform "$VIDEO_URL")
-    VIDEO_ID=$(extract_video_id "$VIDEO_URL" "$PLATFORM")
     OUTPUT_DIR="/tmp/video-summarizer/$PLATFORM/$VIDEO_ID"
 fi
 
 mkdir -p "$OUTPUT_DIR"
 
-# 根据平台选择 Cookies
+# 初始化错误日志文件
+ERROR_LOG="$OUTPUT_DIR/error.log"
+echo "" > "$ERROR_LOG"  # 清空旧日志
+
+# 根据平台选择 Cookies（抖音不使用 cookies，使用专用下载器）
 if [[ "$PLATFORM" == "douyin" ]]; then
-    COOKIES_FILE="$DOUYIN_COOKIES_FILE"
-    if [[ ! -f "$COOKIES_FILE" ]]; then
-        log_warn "抖音 Cookies 不存在：$COOKIES_FILE"
-        log_warn "请先运行：~/.openclaw/skills/video-summarizer/scripts/douyin-login.sh"
-    fi
+    COOKIES_FILE=""  # 抖音不使用 cookies
 else
     COOKIES_FILE="$BILI_COOKIES_FILE"
 fi
@@ -215,7 +209,11 @@ PROGRESS_FILE="$OUTPUT_DIR/.progress.json"
 
 echo "📁 输出目录：$OUTPUT_DIR"
 echo "🏷️  平台：$PLATFORM | 视频 ID: $VIDEO_ID"
-echo "🍪 Cookies: ${COOKIES_FILE:-无}"
+if [[ -n "$COOKIES_FILE" && -f "$COOKIES_FILE" ]]; then
+    echo "🍪 Cookies: $COOKIES_FILE"
+else
+    echo "🍪 Cookies: 无"
+fi
 
 # 检查环境变量（自动推送）
 if [[ "$AUTO_PUSH" == "true" ]]; then
@@ -327,92 +325,212 @@ METAEOF
     save_progress "1" "done"
 fi
 
-# Step 2: 字幕
-if check_progress && [[ -n "$(find "$OUTPUT_DIR" -name "*.vtt" 2>/dev/null | head -1)" ]]; then
-    echo "⏭️  Step 2 跳过"
-    SUBTITLE_FILE=$(find "$OUTPUT_DIR" -name "*.vtt" 2>/dev/null | head -1)
+# Step 2 & 3: 并行执行 - 视频下载 + 字幕处理
+# 两者互不依赖，可以并行执行以节省时间
+
+# 检查是否可以跳过
+if check_progress && [[ -f "$OUTPUT_DIR/video.mp4" && -n "$(find "$OUTPUT_DIR" -name "*.vtt" -o -name "audio.txt" 2>/dev/null | head -1)" ]]; then
+    echo "⏭️  Step 2-3 跳过"
+    VIDEO_FILE="$OUTPUT_DIR/video.mp4"
+    SUBTITLE_FILE=$(find "$OUTPUT_DIR" -name "*.vtt" -o -name "audio.txt" 2>/dev/null | head -1)
     SUBTITLE_SOURCE="已存在"
 else
-    echo "📝 Step 2: 字幕..."
+    echo "🚀 Step 2-3: 并行执行 - 视频下载 + 字幕处理..."
     save_progress "2" "running"
     
+    # 初始化变量
     SUBTITLE_FILE=""
     SUBTITLE_SOURCE=""
     SUBTITLE_LOG="$OUTPUT_DIR/subtitle_download.log"
-
-# 尝试 1: Cookies + 官方字幕
-if [[ -f "$COOKIES_FILE" ]]; then
-    log_info "   尝试使用 Cookies 下载官方字幕..."
-    if [[ "$VERBOSE" == "true" ]]; then
-        yt-dlp --cookies "$COOKIES_FILE" \
-               --write-sub --write-auto-sub \
-               --sub-lang "ai-zh,zh-Hans,zh,en" \
-               --skip-download \
-               --convert-subs vtt \
-               -o "$OUTPUT_DIR/video" "$VIDEO_URL" 2>&1 | tee -a "$SUBTITLE_LOG" || true
-    else
-        yt-dlp --cookies "$COOKIES_FILE" \
-               --write-sub --write-auto-sub \
-               --sub-lang "ai-zh,zh-Hans,zh,en" \
-               --skip-download \
-               --convert-subs vtt \
-               -o "$OUTPUT_DIR/video" "$VIDEO_URL" 2>/dev/null || true
+    VIDEO_FILE="$OUTPUT_DIR/video.mp4"
+    VIDEO_LOG="$OUTPUT_DIR/video_download.log"
+    
+    # ========== 任务 A: 视频下载（后台）==========
+    (
+        # 子进程中重新定义日志函数
+        log_info() { echo "ℹ️  $*"; }
+        log_warn() { echo "⚠️  $*"; }
+        log_error() { echo "❌ $*"; }
+        log_success() { echo "✅ $*"; }
+        
+        log_info "[视频任务] 开始下载视频..."
+        DOWNLOAD_SUCCESS=false
+        
+        # 抖音平台特殊处理
+        if [[ "$PLATFORM" == "douyin" ]]; then
+            log_info "[视频任务] 抖音平台：使用专用下载工具..."
+            DOUYIN_SCRIPT="$SCRIPT_DIR/douyin_downloader.py"
+            
+            if [[ -f "$DOUYIN_SCRIPT" ]]; then
+                python3 "$DOUYIN_SCRIPT" --link "$VIDEO_URL" --action info > "$VIDEO_LOG" 2>&1
+                DOWNLOAD_URL=$(grep "下载链接" "$VIDEO_LOG" | cut -d' ' -f2)
+                
+                if [[ -n "$DOWNLOAD_URL" ]]; then
+                    log_info "[视频任务] 下载链接已获取"
+                    if curl -L -o "$VIDEO_FILE" "$DOWNLOAD_URL" 2>/dev/null; then
+                        DOWNLOAD_SUCCESS=true
+                        log_success "[视频任务] 抖音视频下载成功 | $(ls -lh "$VIDEO_FILE" 2>/dev/null | awk '{print $5}')" >> "$VIDEO_LOG"
+                    fi
+                fi
+            else
+                log_warn "[视频任务] 抖音下载脚本不存在，回退到 yt-dlp"
+            fi
+        fi
+        
+        # 非抖音平台或抖音下载失败
+        if [[ "$DOWNLOAD_SUCCESS" != "true" ]]; then
+            for i in 1 2 3; do
+                log_info "[视频任务] 尝试 $i/3..."
+                if [[ "$VERBOSE" == "true" ]]; then
+                    yt-dlp -f "bestvideo[height<=720]+bestaudio/best[height<=720]" \
+                           --merge-output-format mp4 \
+                           -o "$VIDEO_FILE" "$VIDEO_URL" 2>&1 | tee -a "$VIDEO_LOG" && { DOWNLOAD_SUCCESS=true; break; } || {
+                        rm -f "$VIDEO_FILE"* 2>/dev/null
+                    }
+                else
+                    yt-dlp -f "bestvideo[height<=720]+bestaudio/best[height<=720]" \
+                           --merge-output-format mp4 \
+                           -o "$VIDEO_FILE" "$VIDEO_URL" 2>/dev/null && { DOWNLOAD_SUCCESS=true; break; } || {
+                        rm -f "$VIDEO_FILE"* 2>/dev/null
+                    }
+                fi
+            done
+            
+            if [[ "$DOWNLOAD_SUCCESS" != "true" ]]; then
+                log_warn "[视频任务] 降级尝试..."
+                if [[ "$VERBOSE" == "true" ]]; then
+                    yt-dlp -f "best" --merge-output-format mp4 -o "$VIDEO_FILE" "$VIDEO_URL" 2>&1 | tee -a "$VIDEO_LOG" || {
+                        log_error "[视频任务] 视频下载失败"
+                        exit 1
+                    }
+                else
+                    yt-dlp -f "best" --merge-output-format mp4 -o "$VIDEO_FILE" "$VIDEO_URL" 2>/dev/null || {
+                        log_error "[视频任务] 视频下载失败"
+                        exit 1
+                    }
+                fi
+            fi
+        fi
+        
+        log_success "[视频任务] 视频下载完成 | $(ls -lh "$VIDEO_FILE" 2>/dev/null | awk '{print $5}')"
+        echo "VIDEO_DONE" > "$OUTPUT_DIR/.video_done"
+    ) &
+    VIDEO_PID=$!
+    
+    # ========== 任务 B: 字幕处理（后台）==========
+    (
+        # 子进程中重新定义日志函数
+        log_info() { echo "ℹ️  $*"; }
+        log_warn() { echo "⚠️  $*"; }
+        log_error() { echo "❌ $*"; }
+        log_success() { echo "✅ $*"; }
+        
+        log_info "[字幕任务] 开始处理字幕..."
+        
+        # 尝试 1: Cookies + 官方字幕
+        if [[ -f "$COOKIES_FILE" ]]; then
+            log_info "[字幕任务] 尝试使用 Cookies 下载官方字幕..."
+            if [[ "$VERBOSE" == "true" ]]; then
+                yt-dlp --cookies "$COOKIES_FILE" \
+                       --write-sub --write-auto-sub \
+                       --sub-lang "ai-zh,zh-Hans,zh,en" \
+                       --skip-download \
+                       --convert-subs vtt \
+                       -o "$OUTPUT_DIR/video" "$VIDEO_URL" 2>&1 | tee -a "$SUBTITLE_LOG" || true
+            else
+                yt-dlp --cookies "$COOKIES_FILE" \
+                       --write-sub --write-auto-sub \
+                       --sub-lang "ai-zh,zh-Hans,zh,en" \
+                       --skip-download \
+                       --convert-subs vtt \
+                       -o "$OUTPUT_DIR/video" "$VIDEO_URL" 2>/dev/null || true
+            fi
+            
+            SUBTITLE_FILE=$(find "$OUTPUT_DIR" -name "*.vtt" 2>/dev/null | head -1)
+            [[ -n "$SUBTITLE_FILE" && -s "$SUBTITLE_FILE" ]] && SUBTITLE_SOURCE="官方字幕"
+        fi
+        
+        # 尝试 2: 自动字幕
+        if [[ -z "$SUBTITLE_FILE" ]]; then
+            log_info "[字幕任务] 尝试下载自动字幕..."
+            if [[ "$VERBOSE" == "true" ]]; then
+                yt-dlp --write-auto-sub \
+                       --sub-lang "zh-Hans,zh,en" \
+                       --skip-download \
+                       --convert-subs vtt \
+                       -o "$OUTPUT_DIR/video" "$VIDEO_URL" 2>&1 | tee -a "$SUBTITLE_LOG" || true
+            else
+                yt-dlp --write-auto-sub \
+                       --sub-lang "zh-Hans,zh,en" \
+                       --skip-download \
+                       --convert-subs vtt \
+                       -o "$OUTPUT_DIR/video" "$VIDEO_URL" 2>/dev/null || true
+            fi
+            
+            SUBTITLE_FILE=$(find "$OUTPUT_DIR" -name "*.vtt" 2>/dev/null | head -1)
+            [[ -n "$SUBTITLE_FILE" && -s "$SUBTITLE_FILE" ]] && SUBTITLE_SOURCE="自动字幕"
+        fi
+        
+        # Plan B: 语音转录
+        if [[ -z "$SUBTITLE_FILE" ]]; then
+            log_warn "[字幕任务] 未找到可用字幕，启动 Plan B 语音转录..."
+            
+            AUDIO_FILE="$OUTPUT_DIR/audio.mp3"
+            SUBTITLE_FILE="$OUTPUT_DIR/audio.txt"
+            
+            # 下载音频
+            "$SCRIPT_DIR/download-audio.sh" "$VIDEO_URL" "$AUDIO_FILE"
+            
+            # 语音转录
+            python3 "$SCRIPT_DIR/transcribe-audio.py" "$AUDIO_FILE" "$SUBTITLE_FILE"
+            
+            SUBTITLE_SOURCE="语音转录 (Plan B)"
+            log_success "[字幕任务] 语音转录完成"
+        fi
+        
+        log_success "[字幕任务] 字幕处理完成 | 来源：$SUBTITLE_SOURCE"
+        echo "SUBTITLE_DONE" > "$OUTPUT_DIR/.subtitle_done"
+    ) &
+    SUBTITLE_PID=$!
+    
+    # ========== 等待两个任务完成 ==========
+    echo "⏳ 等待视频下载和字幕处理完成..."
+    wait $VIDEO_PID
+    VIDEO_EXIT=$?
+    wait $SUBTITLE_PID
+    SUBTITLE_EXIT=$?
+    
+    # 检查任务结果
+    if [[ $VIDEO_EXIT -ne 0 ]]; then
+        log_error "视频下载任务失败"
+        exit 1
     fi
     
-    SUBTITLE_FILE=$(find "$OUTPUT_DIR" -name "*.vtt" 2>/dev/null | head -1)
-    [[ -n "$SUBTITLE_FILE" && -s "$SUBTITLE_FILE" ]] && SUBTITLE_SOURCE="官方字幕"
-fi
-
-# 尝试 2: 自动字幕
-if [[ -z "$SUBTITLE_FILE" ]]; then
-    echo "   尝试下载自动字幕..."
-    if [[ "$VERBOSE" == "true" ]]; then
-        yt-dlp --write-auto-sub \
-               --sub-lang "zh-Hans,zh,en" \
-               --skip-download \
-               --convert-subs vtt \
-               -o "$OUTPUT_DIR/video" "$VIDEO_URL" 2>&1 | tee -a "$SUBTITLE_LOG" || true
-    else
-        yt-dlp --write-auto-sub \
-               --sub-lang "zh-Hans,zh,en" \
-               --skip-download \
-               --convert-subs vtt \
-               -o "$OUTPUT_DIR/video" "$VIDEO_URL" 2>/dev/null || true
+    if [[ $SUBTITLE_EXIT -ne 0 ]]; then
+        log_error "字幕处理任务失败"
+        exit 1
     fi
     
-    SUBTITLE_FILE=$(find "$OUTPUT_DIR" -name "*.vtt" 2>/dev/null | head -1)
-    [[ -n "$SUBTITLE_FILE" && -s "$SUBTITLE_FILE" ]] && SUBTITLE_SOURCE="自动字幕"
+    # 重新查找字幕文件（可能在子进程中生成）
+    SUBTITLE_FILE=$(find "$OUTPUT_DIR" -name "*.vtt" -o -name "audio.txt" 2>/dev/null | head -1)
+    
+    echo "✅ 视频下载完成 | $(ls -lh "$VIDEO_FILE" 2>/dev/null | awk '{print $5}')"
+    echo "✅ 字幕处理完成 | 来源：${SUBTITLE_SOURCE:-未知}"
+    save_progress "2" "done"
 fi
 
-# Plan B: 语音转录
-if [[ -z "$SUBTITLE_FILE" ]]; then
-    log_warn "未找到可用字幕，启动 Plan B 语音转录..."
-    
-    AUDIO_FILE="$OUTPUT_DIR/audio.mp3"
-    # 硅基流动返回 txt 文件，Groq 返回 vtt 文件
-    SUBTITLE_FILE="$OUTPUT_DIR/audio.txt"
-    
-    # 下载音频
-    "$SCRIPT_DIR/download-audio.sh" "$VIDEO_URL" "$AUDIO_FILE"
-    
-    # 语音转录
-    python3 "$SCRIPT_DIR/transcribe-audio.py" "$AUDIO_FILE" "$SUBTITLE_FILE"
-    
-    SUBTITLE_SOURCE="语音转录 (Plan B)"
-    echo "   ✅ 语音转录完成"
-fi
-
-echo "✅ 字幕完成 | 来源：$SUBTITLE_SOURCE"
-save_progress "2" "done"
-fi
-
-# Step 3: 文本提取
+# Step 3: 文本提取（原 Step 3，现在是 Step 3）
 if check_progress && [[ -f "$OUTPUT_DIR/transcript.txt" ]]; then
     echo "⏭️  Step 3 跳过"
     WORD_COUNT=$(wc -w < "$OUTPUT_DIR/transcript.txt")
 else
     echo "📝 Step 3: 文本提取..."
     save_progress "3" "running"
+    
+    # 重新查找字幕文件（可能在并行任务中生成）
+    if [[ -z "$SUBTITLE_FILE" ]]; then
+        SUBTITLE_FILE=$(find "$OUTPUT_DIR" -name "*.vtt" -o -name "audio.txt" 2>/dev/null | head -1)
+    fi
     
     # 检查是否有 VTT 字幕文件
     if [[ "$SUBTITLE_FILE" =~ \.vtt$ ]]; then
@@ -436,88 +554,12 @@ else
     save_progress "3" "done"
 fi
 
-# Step 4: 视频下载
-if check_progress && [[ -f "$OUTPUT_DIR/video.mp4" ]]; then
-    echo "⏭️  Step 4 跳过"
-    VIDEO_FILE="$OUTPUT_DIR/video.mp4"
-else
-    echo "📥 Step 4: 视频下载..."
-    save_progress "4" "running"
-    
-    VIDEO_FILE="$OUTPUT_DIR/video.mp4"
-    DOWNLOAD_SUCCESS=false
-    VIDEO_LOG="$OUTPUT_DIR/video_download.log"
-    
-    # 抖音平台特殊处理：使用整合的抖音下载工具（无需 Cookies）
-    if [[ "$PLATFORM" == "douyin" ]]; then
-        log_info "抖音平台：使用专用下载工具（无需 Cookies）..."
-        DOUYIN_SCRIPT="$SCRIPT_DIR/douyin_downloader.py"
-        
-        if [[ -f "$DOUYIN_SCRIPT" ]]; then
-            # 获取视频信息和下载链接
-            python3 "$DOUYIN_SCRIPT" --link "$VIDEO_URL" --action info > "$VIDEO_LOG" 2>&1
-            
-            # 解析下载链接
-            DOWNLOAD_URL=$(grep "下载链接" "$VIDEO_LOG" | cut -d' ' -f2)
-            
-            if [[ -n "$DOWNLOAD_URL" ]]; then
-                log_info "   下载链接已获取"
-                # 下载视频
-                if curl -L -o "$VIDEO_FILE" "$DOWNLOAD_URL" 2>/dev/null; then
-                    DOWNLOAD_SUCCESS=true
-                    echo "✅ 抖音视频下载成功 | $(ls -lh "$VIDEO_FILE" | awk '{print $5}')" >> "$VIDEO_LOG"
-                fi
-            fi
-        else
-            log_warn "抖音下载脚本不存在，回退到 yt-dlp"
-        fi
-    fi
-    
-    # 非抖音平台或抖音下载失败：使用 yt-dlp
-    if [[ "$DOWNLOAD_SUCCESS" != "true" ]]; then
-        for i in 1 2 3; do
-            log_info "   尝试 $i/3..."
-            if [[ "$VERBOSE" == "true" ]]; then
-                yt-dlp -f "bestvideo[height<=720]+bestaudio/best[height<=720]" \
-                       --merge-output-format mp4 \
-                       -o "$VIDEO_FILE" "$VIDEO_URL" 2>&1 | tee -a "$VIDEO_LOG" && { DOWNLOAD_SUCCESS=true; break; } || {
-                    rm -f "$VIDEO_FILE"* 2>/dev/null
-                }
-            else
-                yt-dlp -f "bestvideo[height<=720]+bestaudio/best[height<=720]" \
-                       --merge-output-format mp4 \
-                       -o "$VIDEO_FILE" "$VIDEO_URL" 2>/dev/null && { DOWNLOAD_SUCCESS=true; break; } || {
-                    rm -f "$VIDEO_FILE"* 2>/dev/null
-                }
-            fi
-        done
-        
-        if [[ "$DOWNLOAD_SUCCESS" != "true" ]]; then
-            echo "   降级尝试..."
-            if [[ "$VERBOSE" == "true" ]]; then
-                yt-dlp -f "best" --merge-output-format mp4 -o "$VIDEO_FILE" "$VIDEO_URL" 2>&1 | tee -a "$VIDEO_LOG" || {
-                    echo "   ❌ 视频下载失败"
-                    exit 1
-                }
-            else
-                yt-dlp -f "best" --merge-output-format mp4 -o "$VIDEO_FILE" "$VIDEO_URL" 2>/dev/null || {
-                    echo "   ❌ 视频下载失败"
-                    exit 1
-                }
-            fi
-        fi
-    fi
-    
-    echo "✅ 视频下载成功 | $(ls -lh "$VIDEO_FILE" | awk '{print $5}')"
-    save_progress "4" "done"
-fi
-
-# Step 5: AI 分析（先生成 JSON，供截图使用）
+# Step 4: AI 分析
 if check_progress && [[ -f "$OUTPUT_DIR/ai_result.json" ]]; then
-    echo "⏭️  Step 5 跳过（AI 结果已存在）"
+    echo "⏭️  Step 4 跳过（AI 结果已存在）"
 else
-    echo "🤖 Step 5: AI 分析（生成 JSON）..."
-    save_progress "5" "running"
+    echo "🤖 Step 4: AI 分析（生成 JSON）..."
+    save_progress "4" "running"
     
     AI_SCRIPT="$SCRIPT_DIR/analyze-subtitles-ai.py"
     AI_JSON_FILE="$OUTPUT_DIR/ai_result.json"
@@ -553,15 +595,15 @@ AIJSON
         log_warn "AI 脚本不存在，使用基础版总结"
         AI_SUCCESS="false"
     fi
-    save_progress "5" "done"
+    save_progress "4" "done"
 fi
 
-# Step 6: 截图（基于 AI 分析的时间戳）
+# Step 5: 截图（基于 AI 分析的时间戳）
 if check_progress && [[ -d "$OUTPUT_DIR/screenshots" && -n "$(ls -A "$OUTPUT_DIR/screenshots" 2>/dev/null)" ]]; then
-    echo "⏭️  Step 6 跳过"
+    echo "⏭️  Step 5 跳过"
 else
-    echo "🎬 Step 6: 截图（基于 AI 分析结果）..."
-    save_progress "6" "running"
+    echo "🎬 Step 5: 截图（基于 AI 分析结果）..."
+    save_progress "5" "running"
     
     mkdir -p "$OUTPUT_DIR/screenshots"
     
@@ -673,15 +715,15 @@ PYEOF
     printf '%s\n' "${SCREENSHOT_TIMES[@]}" > "$SCREENSHOT_TIMES_FILE"
     echo "   💾 截图时间戳已保存：$SCREENSHOT_TIMES_FILE"
     
-    save_progress "6" "done"
+    save_progress "5" "done"
 fi
 
-# Step 7: OSS 上传
+# Step 6: OSS 上传
 if check_progress && [[ -f "$OUTPUT_DIR/screenshot_urls.txt" ]]; then
-    echo "⏭️  Step 7 跳过"
+    echo "⏭️  Step 6 跳过"
 else
-    echo "☁️  Step 7: OSS 上传..."
-    save_progress "7" "running"
+    echo "☁️  Step 6: OSS 上传..."
+    save_progress "6" "running"
     
     OSS_SCRIPT="$SCRIPT_DIR/upload-to-oss.py"
     OSS_URLS_FILE="$OUTPUT_DIR/screenshot_urls.txt"
@@ -733,11 +775,11 @@ else
     echo "⚠️  OSS 脚本不存在，使用本地路径"
     echo "[]" > "$OSS_URLS_FILE"
 fi
-save_progress "7" "done"
+save_progress "6" "done"
 fi
 
-# Step 8: 渲染最终 Markdown（截图和 OSS 完成后）
-echo "📝 Step 8: 渲染 Markdown..."
+# Step 7: 渲染最终 Markdown（截图和 OSS 完成后）
+echo "📝 Step 7: 渲染 Markdown..."
 SUMMARY_FILE="$OUTPUT_DIR/summary.md"
 
 # 重新调用 AI 脚本，让它读取已上传的截图 URL 并渲染最终 Markdown
@@ -751,9 +793,9 @@ else
     [[ -f "$TEMP_SUMMARY" ]] && mv "$TEMP_SUMMARY" "$SUMMARY_FILE"
 fi
 
-# Step 9: 输出
-echo "📁 Step 9: 整理输出..."
-save_progress "9" "done"
+# Step 8: 输出
+echo "📁 Step 8: 整理输出..."
+save_progress "8" "done"
 
 echo ""
 echo "================================"
@@ -767,9 +809,64 @@ echo ""
 # 清理
 [[ "$KEEP_VIDEO" != "true" ]] && { rm -f "$OUTPUT_DIR/video.mp4" "$OUTPUT_DIR/audio.mp3" 2>/dev/null; echo "🧹 已清理视频/音频"; } || echo "💾 保留视频/音频"
 
-# 推送
-[[ "$AUTO_PUSH" == "true" && -n "$NOTION_VIDEO_SUMMARY_DATABASE_ID" ]] && { echo ""; echo "📤 推送到 Notion..."; python3 "$SCRIPT_DIR/push-to-notion.py" "$SUMMARY_FILE" "$NOTION_VIDEO_SUMMARY_DATABASE_ID"; } || echo "📤 推送：python3 push-to-notion.py $SUMMARY_FILE"
-
 # 截图状态
 [[ $(python3 -c "import json; print(len([x for x in json.load(open('$OSS_URLS_FILE')) if x.get('success')]))" 2>/dev/null || echo 0) -gt 0 ]] && echo "📸 截图：✅ 已上传" || echo "📸 截图：⚠️  本地"
+echo ""
+
+# Step 9: 推送到 Notion（自动检测配置）
+echo "📤 Step 9: 检查 Notion 配置..."
+
+# 检查 Notion 配置（环境变量或 .env 文件）
+NOTION_CONFIGURED="false"
+NOTION_DB_ID=""
+NOTION_KEY=""
+
+# 1. 优先使用环境变量
+if [[ -n "$NOTION_VIDEO_SUMMARY_DATABASE_ID" && -n "$NOTION_API_KEY" ]]; then
+    NOTION_CONFIGURED="true"
+    NOTION_DB_ID="$NOTION_VIDEO_SUMMARY_DATABASE_ID"
+    NOTION_KEY="$NOTION_API_KEY"
+    log_info "   使用环境变量配置"
+else
+    # 2. 尝试从 .env 文件读取
+    ENV_FILE="$HOME/.openclaw/.env"
+    if [[ -f "$ENV_FILE" ]]; then
+        ENV_DB_ID=$(grep -E "^NOTION_VIDEO_SUMMARY_DATABASE_ID=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2 | tr -d '"' | tr -d "'")
+        ENV_KEY=$(grep -E "^NOTION_API_KEY=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2 | tr -d '"' | tr -d "'")
+        
+        if [[ -n "$ENV_DB_ID" && -n "$ENV_KEY" ]]; then
+            NOTION_CONFIGURED="true"
+            NOTION_DB_ID="$ENV_DB_ID"
+            NOTION_KEY="$ENV_KEY"
+            log_info "   使用 .env 文件配置 ($ENV_FILE)"
+        fi
+    fi
+fi
+
+# 执行推送或跳过
+if [[ "$NOTION_CONFIGURED" == "true" ]]; then
+    echo "ℹ️     Notion 配置已检测，开始推送..."
+    save_progress "9" "running"
+    
+    python3 "$SCRIPT_DIR/push-to-notion.py" "$SUMMARY_FILE" "$NOTION_DB_ID"
+    PUSH_EXIT=$?
+    
+    if [[ $PUSH_EXIT -eq 0 ]]; then
+        echo "✅ Notion 推送成功"
+        save_progress "9" "done"
+    else
+        echo "❌ Notion 推送失败"
+        save_progress "9" "failed"
+    fi
+else
+    echo "⚠️     未检测到 Notion 配置，跳过推送"
+    echo "   💡 提示：如需自动推送，请配置以下任一方式："
+    echo "      方式 1 - 环境变量："
+    echo "        export NOTION_VIDEO_SUMMARY_DATABASE_ID=your_database_id"
+    echo "        export NOTION_API_KEY=your_api_key"
+    echo "      方式 2 - .env 文件："
+    echo "        在 $HOME/.openclaw/.env 中添加："
+    echo "        NOTION_VIDEO_SUMMARY_DATABASE_ID=your_database_id"
+    echo "        NOTION_API_KEY=your_api_key"
+fi
 echo ""
