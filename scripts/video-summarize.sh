@@ -497,6 +497,18 @@ else
         exit 1
     fi
     
+    # 检查视频文件是否真的存在（修复：yt-dlp 可能报错但仍返回 0）
+    if [[ ! -f "$VIDEO_FILE" ]]; then
+        log_warn "视频文件不存在，检查是否仅有音频"
+        # 如果有音频文件，继续使用（截图将使用封面图代替）
+        if [[ -f "$OUTPUT_DIR/audio.mp3" ]]; then
+            log_info "检测到音频文件，继续处理（截图将使用封面图）"
+        else
+            log_error "视频和音频文件都不存在，无法继续"
+            exit 1
+        fi
+    fi
+    
     if [[ $SUBTITLE_EXIT -ne 0 ]]; then
         log_error "字幕处理任务失败"
         exit 1
@@ -680,23 +692,45 @@ PYEOF
     
     # 执行截图
     SUCCESS_COUNT=0
-    for i in "${!SCREENSHOT_TIMES[@]}"; do
-        TIME="${SCREENSHOT_TIMES[$i]}"
-        # 转换为 HH:MM:SS 格式（ffmpeg 需要）
-        if [[ "$TIME" =~ ^([0-9]+):([0-9]+)$ ]]; then
-            FFMPEG_TIME="00:${BASH_REMATCH[1]}:${BASH_REMATCH[2]}"
-        elif [[ "$TIME" =~ ^([0-9]+):([0-9]+):([0-9]+)$ ]]; then
-            FFMPEG_TIME="${BASH_REMATCH[1]}:${BASH_REMATCH[2]}:${BASH_REMATCH[3]}"
-        else
-            FFMPEG_TIME="00:$TIME"
-        fi
+    
+    # 检查是否有视频文件
+    if [[ ! -f "$VIDEO_FILE" ]]; then
+        log_warn "视频文件不存在，使用封面图代替截图"
+        # 从元数据获取封面 URL
+        COVER_URL=$(python3 -c "import json; print(json.load(open('$OUTPUT_DIR/metadata.json')).get('thumbnail', ''))" 2>/dev/null)
         
-        OUT="$OUTPUT_DIR/screenshots/screenshot_$(printf "%02d" $((i+1))).jpg"
-        ffmpeg -ss "$FFMPEG_TIME" -i "$VIDEO_FILE" -vframes 1 -update 1 -q:v 2 "$OUT" -y 2>/dev/null && {
-            echo "   📸 $TIME → screenshot_$(printf "%02d" $((i+1))).jpg"
-            SUCCESS_COUNT=$((SUCCESS_COUNT + 1))
-        }
-    done
+        if [[ -n "$COVER_URL" ]]; then
+            # 下载封面图作为所有截图
+            for i in "${!SCREENSHOT_TIMES[@]}"; do
+                OUT="$OUTPUT_DIR/screenshots/screenshot_$(printf "%02d" $((i+1))).jpg"
+                if curl -L -o "$OUT" "$COVER_URL" 2>/dev/null && [[ -s "$OUT" ]]; then
+                    echo "   📸 ${SCREENSHOT_TIMES[$i]} → 封面图 (视频不可用)"
+                    SUCCESS_COUNT=$((SUCCESS_COUNT + 1))
+                fi
+            done
+        else
+            log_warn "封面 URL 也不存在，截图将为空"
+        fi
+    else
+        # 正常截图流程
+        for i in "${!SCREENSHOT_TIMES[@]}"; do
+            TIME="${SCREENSHOT_TIMES[$i]}"
+            # 转换为 HH:MM:SS 格式（ffmpeg 需要）
+            if [[ "$TIME" =~ ^([0-9]+):([0-9]+)$ ]]; then
+                FFMPEG_TIME="00:${BASH_REMATCH[1]}:${BASH_REMATCH[2]}"
+            elif [[ "$TIME" =~ ^([0-9]+):([0-9]+):([0-9]+)$ ]]; then
+                FFMPEG_TIME="${BASH_REMATCH[1]}:${BASH_REMATCH[2]}:${BASH_REMATCH[3]}"
+            else
+                FFMPEG_TIME="00:$TIME"
+            fi
+            
+            OUT="$OUTPUT_DIR/screenshots/screenshot_$(printf "%02d" $((i+1))).jpg"
+            ffmpeg -ss "$FFMPEG_TIME" -i "$VIDEO_FILE" -vframes 1 -update 1 -q:v 2 "$OUT" -y 2>/dev/null && {
+                echo "   📸 $TIME → screenshot_$(printf "%02d" $((i+1))).jpg"
+                SUCCESS_COUNT=$((SUCCESS_COUNT + 1))
+            }
+        done
+    fi
     
     [[ $SUCCESS_COUNT -eq 0 ]] && { echo "❌ 截图失败"; exit 1; }
     echo "✅ 截图完成 | $SUCCESS_COUNT 张"

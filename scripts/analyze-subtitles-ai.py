@@ -791,7 +791,7 @@ AI 分析暂时不可用，请稍后重试。
 ---
 
 *生成时间：{datetime.now().strftime("%Y-%m-%d")}*
-*技能版本：video-summarizer v1.0.3*
+*技能版本：video-summarizer v1.0.4*
 """
         with open(output_file, 'w', encoding='utf-8') as f:
             f.write(md_content)
