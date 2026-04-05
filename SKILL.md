@@ -1,32 +1,235 @@
-# Video Summarizer — 视频总结生成技能
+---
+name: video-summarizer
+description: "将 B 站/YouTube/小红书/抖音视频转换为结构化 Notion 总结文档，自动上传截图，一键推送 Notion"
+metadata:
+  {
+    "openclaw":
+      {
+        "emoji": "🎬",
+        "requires": { "bins": ["ffmpeg", "yt-dlp"], "env": ["DASHSCOPE_API_KEY", "ALIYUN_OSS_AK", "ALIYUN_OSS_SK", "ALIYUN_OSS_BUCKET_ID"] },
+        "install":
+          [
+            {
+              "id": "brew",
+              "kind": "brew",
+              "formula": "ffmpeg yt-dlp",
+              "bins": ["ffmpeg", "yt-dlp"],
+              "label": "Install ffmpeg and yt-dlp (brew)",
+            },
+            {
+              "id": "apt",
+              "kind": "apt",
+              "packages": "ffmpeg yt-dlp",
+              "bins": ["ffmpeg", "yt-dlp"],
+              "label": "Install ffmpeg and yt-dlp (apt)",
+            },
+            {
+              "id": "pip",
+              "kind": "pip",
+              "packages": "requests oss2 python-dotenv",
+              "label": "Install Python dependencies",
+            },
+          ],
+      },
+  }
+---
+
+# Video Summarizer — OpenClaw Skill
 
 将 B 站/YouTube/小红书/抖音视频转换为结构化 Notion 总结文档，自动上传截图，一键推送 Notion。
 
-**版本:** v0.1.5  
-**发布日期:** 2026-04-05  
-**状态:** ✅ 并行优化 · 标签提取 · OSS 路径修复 · GPU 自适应 · 日志完善
+**版本**: 1.0.0  
+**发布**: 2026-04-05  
+**许可**: MIT  
+**作者**: Ajay Hao
 
 ---
 
-## 平台支持状态
+## 📖 技能描述
 
-| 平台 | 支持状态 | 字幕支持 | Plan B 语音转录 | 说明 |
-|------|----------|----------|----------------|------|
-| **Bilibili** | ✅ 完整支持 | ✅ 官方 + 自动 | ✅ 支持 | 推荐扫码登录获取 Cookies |
-| **YouTube** | ✅ 完整支持 | ✅ 自动字幕 | ✅ 支持 | 需网络可达 |
-| **小红书** | ✅ 基本支持 | ❌ 无字幕 | ✅ 支持 | 依赖 Plan B 语音转录 |
-| **抖音** | ✅ 完整支持 | ❌ 无字幕 | ✅ 支持 | 专用下载工具（无需 Cookies） |
+### 核心能力
+
+- 🎬 **多平台支持**: B 站、YouTube、小红书、抖音
+- 📝 **智能分析**: AI 提取关键概念、核心要点、注意事项
+- 📸 **截图嵌入**: 基于 AI 分析结果自动生成关键帧截图
+- ☁️ **图床集成**: 阿里云 OSS 自动上传，永久链接
+- 🚀 **一键推送**: 自动推送 Notion 数据库
+
+### 技术特性
+
+- **双模式转录**: Plan A（官方字幕）优先，Plan B（语音转录）兜底
+- **并行优化**: 字幕下载与视频下载并行执行，节省 32% 时间
+- **GPU 自适应**: 自动检测显存，选择最优 Whisper 模型
+- **断点续跑**: 支持从中断点恢复，避免重复处理
+- **四层标签**: 标题 hashtag → 元数据 → AI 关键词 → 默认值
+
+---
+
+## 🎯 平台支持详情
+
+### Bilibili（完整支持）
+
+**字幕**: ✅ 官方字幕 + 自动字幕  
+**语音转录**: ✅ 支持（Plan B）  
+**Cookies**: 推荐（获取官方字幕）  
+**下载工具**: yt-dlp
+
+#### 操作步骤
+
+```bash
+# 1. 扫码登录（首次使用，获取官方字幕）
+cd ~/.openclaw/skills/video-summarizer/scripts
+./bili-login.sh
+
+# 2. 处理视频
+./video-summarize.sh "https://www.bilibili.com/video/BV1xxxx"
+
+# 3. 查看结果
+cat /tmp/video-summarizer-*/summary.md
+```
+
+**说明**:
+- Cookies 文件：`~/.cookies/bilibili_cookies.txt`
+- 无 Cookies 时使用 Plan B 语音转录
+- 支持 b23.tv 短链
+
+---
+
+### YouTube（完整支持）
+
+**字幕**: ✅ 自动字幕（多语言）  
+**语音转录**: ✅ 支持（Plan B）  
+**Cookies**: ❌ 不需要  
+**下载工具**: yt-dlp
+
+#### 操作步骤
+
+```bash
+# 直接处理（无需登录）
+./video-summarize.sh "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+
+# 指定输出目录
+./video-summarize.sh "https://youtu.be/dQw4w9WgXcQ" /tmp/output
+```
+
+**说明**:
+- 需网络可达（可能需要代理）
+- 优先下载英文字幕，无则用语音转录
+- 支持 youtu.be 短链
+
+---
+
+### 小红书（基本支持）
+
+**字幕**: ❌ 无字幕  
+**语音转录**: ✅ 唯一方式（Plan B）  
+**Cookies**: ❌ 不需要  
+**下载工具**: yt-dlp
+
+#### 操作步骤
+
+```bash
+# 直接处理（自动使用 Plan B 语音转录）
+./video-summarize.sh "https://www.xiaohongshu.com/explore/xxxx"
+
+# 或短链
+./video-summarize.sh "https://xhslink.com/o/xxxx"
+```
+
+**说明**:
+- 必须使用 Plan B 语音转录
+- 推荐配置 GROQ_API_KEY 加速转录
+- 自动上传封面图到 OSS
+
+---
+
+### 抖音（完整支持）
+
+**字幕**: ❌ 无字幕  
+**语音转录**: ✅ 唯一方式（Plan B）  
+**Cookies**: ❌ 不需要（专用下载器）  
+**下载工具**: douyin_downloader.py
+
+#### 操作步骤
+
+```bash
+# 直接处理（专用下载器，无需 Cookies）
+./video-summarize.sh "https://www.douyin.com/video/7234567890"
+
+# 支持短链
+./video-summarize.sh "https://v.douyin.com/abc123/"
+```
+
+**说明**:
+- 使用专用下载器 `douyin_downloader.py`
+- 无反爬限制，无需 Cookies
+- 必须使用 Plan B 语音转录
+
+---
+
+## ⚙️ 配置详解
+
+### 环境变量（~/.openclaw/.env）
+
+```bash
+# ========== 必需配置 ==========
+
+# 阿里云 OSS 图床
+ALIYUN_OSS_AK=your_access_key_id
+ALIYUN_OSS_SK=your_access_key_secret
+ALIYUN_OSS_BUCKET_ID=your_bucket_name
+ALIYUN_OSS_ENDPOINT=oss-cn-shanghai.aliyuncs.com
+
+# AI 分析（DashScope API）
+DASHSCOPE_API_KEY=sk-xxxxxxxxxxxxxxxx
+
+# ========== 可选配置 ==========
+
+# Notion 自动推送
+NOTION_API_KEY=nop_xxxxxxxxxxxxxxxx
+NOTION_VIDEO_SUMMARY_DATABASE_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+
+# 语音转录加速（无 GPU 时推荐）
+GROQ_API_KEY=gsk_xxxxxxxxxxxxxxxx
+
+# 硅基流动（备用转录）
+SILICONFLOW_API_KEY=sk-xxxxxxxxxxxxxxxx
+
+# 本地 Whisper 模型（有 GPU 时自动检测）
+WHISPER_MODEL=base  # tiny/base/small/medium/large
+USE_LOCAL_WHISPER=false  # true 强制使用本地 Whisper
+```
+
+### OSS Bucket 要求
+
+- **访问权限**: 公开可读（直接 URL 访问）
+- **CORS 配置**: 允许跨域访问（Notion 嵌入需要）
+- **存储类型**: 标准存储（低频访问会影响加载速度）
+
+### Notion 数据库配置
+
+1. 创建数据库，添加以下字段：
+   - `标题` (Title)
+   - `Tags` (Multi-select)
+   - `Author` (Rich text)
+   - `Platform` (Select: Bilibili/YouTube/小红书/抖音)
+   - `URL` (URL)
+   - `Duration` (Rich text)
+   - `Created` (Created time)
+
+2. 获取 Database ID：
+   - 打开数据库 → 复制 URL 中 `?v=` 后的 ID
 
 ---
 
 ## 🏗️ 系统架构
 
-### 数据流图
+### 处理流程
 
 ```
 用户输入 (视频 URL)
        ↓
-Step 1: 平台识别 + 元数据 (yt-dlp / douyin_downloader.py)
+Step 1: 平台识别 + 元数据
        ↓
 ┌──────┴──────┐
 ↓             ↓
@@ -40,11 +243,11 @@ Step 5: AI 分析 (DashScope API - qwen3.5-plus)
        ↓
 Step 6: 截图生成 (ffmpeg, 基于 AI 时间戳)
        ↓
-Step 7: OSS 上传 (upload-to-oss.py)
+Step 7: OSS 上传 (截图 + 封面)
        ↓
-Step 8: Markdown 渲染 (analyze-subtitles-ai.py)
+Step 8: Markdown 渲染
        ↓
-Step 9: Notion 推送 (push-to-notion.py, 可选)
+Step 9: Notion 推送 (可选)
 ```
 
 ### 技术栈
@@ -56,82 +259,15 @@ Step 9: Notion 推送 (push-to-notion.py, 可选)
 | 转录层 | Faster-Whisper (本地) / Groq API / 硅基流动 |
 | 工具层 | yt-dlp, ffmpeg, oss2, requests |
 
-### 模块依赖关系
+### 数据文件
 
-```
-video-summarize.sh (主编排)
-│
-├── yt-dlp (元数据获取、视频下载、字幕下载)
-│
-├── douyin_downloader.py (抖音专用)
-│   └── requests
-│
-├── download-audio.sh (Plan B)
-│   └── yt-dlp
-│
-├── transcribe-audio.py (Plan B)
-│   ├── Faster-Whisper (本地 GPU/CPU)
-│   ├── Groq API (whisper-large-v3)
-│   └── 硅基流动 (FunAudioLLM/SenseVoiceSmall)
-│
-├── analyze-subtitles-ai.py (AI 分析 + Markdown 渲染)
-│   ├── requests (DashScope API)
-│   ├── prompt.json (AI 提示词配置)
-│   └── templates/summary.md (模板)
-│
-├── upload-to-oss.py (OSS 上传)
-│   ├── oss2 (阿里云 OSS SDK)
-│   └── requests (封面下载)
-│
-└── push-to-notion.py (Notion 推送)
-    └── requests (Notion API)
-```
-
-### 数据文件依赖
-
-| 文件 | 来源 | 字段 | 被依赖 |
-|------|------|------|--------|
-| `metadata.json` | yt-dlp / douyin_downloader | title, uploader, duration, thumbnail | analyze, upload, push |
-| `transcript.txt` | VTT 提取 / Plan B 转录 | 纯文本字幕 | analyze |
-| `ai_result.json` | analyze-subtitles-ai.py | note, key_points, concepts, warnings | 截图提取，Markdown 渲染 |
-| `screenshot_urls.txt` | upload-to-oss.py | [{local_path, oss_url, success}] | Markdown 渲染 |
-| `.progress.json` | video-summarize.sh | current_step, status, timestamp | 断点续跑检测 |
-
----
-
-## 🚀 快速开始
-
-### 1. 扫码登录（首次使用）
-
-```bash
-~/.openclaw/skills/video-summarizer/scripts/bili-login.sh
-```
-
-### 2. 处理视频
-
-```bash
-~/.openclaw/skills/video-summarizer/scripts/video-summarize.sh "视频 URL"
-```
-
-### 3. 推送 Notion
-
-```bash
-python3 ~/.openclaw/skills/video-summarizer/scripts/push-to-notion.py \
-    /tmp/video-summarizer/*/summary.md
-```
-
----
-
-## 核心流程
-
-```
-阶段一：素材准备 → metadata.json + *.vtt + video.mp4
-阶段二：加工提炼 → screenshots/ + screenshot_urls.txt + AI 分析
-阶段三：内容整合 → summary.md
-阶段四：输出交付 → Notion 页面
-```
-
-**优势:** 断点续跑 · 分段优化 · 批量并行
+| 文件 | 来源 | 用途 |
+|------|------|------|
+| `metadata.json` | yt-dlp / douyin_downloader | 视频元数据 |
+| `transcript.txt` | VTT 提取 / Plan B 转录 | 纯文本字幕 |
+| `ai_result.json` | analyze-subtitles-ai.py | AI 分析结果 |
+| `screenshot_urls.txt` | upload-to-oss.py | 截图 OSS 链接 |
+| `summary.md` | analyze-subtitles-ai.py | 最终总结 |
 
 ---
 
@@ -141,45 +277,48 @@ python3 ~/.openclaw/skills/video-summarizer/scripts/push-to-notion.py \
 
 | 脚本 | 功能 |
 |------|------|
-| `video-summarize.sh` | 主流程（Plan A/B 自动选择） |
-| `upload-to-oss.py` | 上传截图到 OSS |
-| `push-to-notion.py` | 推送 Notion |
-| `analyze-subtitles-ai.py` | AI 分析生成总结 |
+| `video-summarize.sh` | 主流程编排（Plan A/B 自动选择） |
+| `analyze-subtitles-ai.py` | AI 分析 + Markdown 渲染 |
+| `upload-to-oss.py` | OSS 图床上传（截图 + 封面） |
+| `push-to-notion.py` | Notion 推送 |
 
-### 平台登录（2 个）
+### 平台工具（2 个）
 
 | 脚本 | 功能 |
 |------|------|
-| `bili-login.sh` | B 站扫码登录 |
-| `douyin-login-v2.sh` | 抖音 Cookies 获取（浏览器读取） |
+| `bili-login.sh` | B 站扫码登录（获取 Cookies） |
+| `douyin_downloader.py` | 抖音专用下载器（无需 Cookies） |
 
 ### 辅助工具（4 个）
 
 | 脚本 | 功能 |
 |------|------|
-| `check-config.sh` | 检查配置是否就绪 |
-| `convert-bili-cookie.py` | Cookies 格式转换 |
 | `download-audio.sh` | Plan B: 音频下载 |
-| `transcribe-audio.py` | Plan B: 语音转录 |
+| `transcribe-audio.py` | Plan B: 语音转录（GPU 自适应） |
+| `check-config.sh` | 配置检查 |
+| `convert-bili-cookie.py` | Cookies 格式转换 |
 
 ---
 
 ## 🎯 Plan A vs Plan B
 
+### 对比表
+
 | 项目 | Plan A | Plan B |
-|-----|--------|--------|
+|------|--------|--------|
 | **字幕来源** | 平台官方字幕 | 语音转录 |
 | **准确率** | 90%+ | 80-90% |
 | **速度** | 快 (1-2 分钟) | 较慢 (3-5 分钟) |
+| **依赖** | Cookies（B 站） | GPU 或 API Key |
 
-### 各平台 Plan A/B 使用情况
+### 各平台使用情况
 
-| 平台 | Plan A | Plan B | 默认使用 | 说明 |
-|------|--------|--------|----------|------|
-| **Bilibili** | ✅ 官方 + 自动 | ✅ 备用 | Plan A | 推荐扫码登录获取官方字幕 |
-| **YouTube** | ✅ 自动字幕 | ✅ 备用 | Plan A | 需网络可达 |
-| **小红书** | ❌ 无 | ✅ 唯一 | Plan B | 依赖语音转录 |
-| **抖音** | ❌ 无 | ✅ 唯一 | Plan B | 依赖语音转录 |
+| 平台 | Plan A | Plan B | 默认 |
+|------|--------|--------|------|
+| **Bilibili** | ✅ 官方 + 自动 | ✅ 备用 | Plan A |
+| **YouTube** | ✅ 自动字幕 | ✅ 备用 | Plan A |
+| **小红书** | ❌ 无 | ✅ 唯一 | Plan B |
+| **抖音** | ❌ 无 | ✅ 唯一 | Plan B |
 
 ### Plan B 四层降级方案
 
@@ -197,164 +336,25 @@ python3 ~/.openclaw/skills/video-summarizer/scripts/push-to-notion.py \
 4. Whisper.cpp / OpenAI Whisper → 保底方案
 ```
 
-**Plan B 配置**：
-```bash
-# ~/.openclaw/.env
-GROQ_API_KEY=your_groq_api_key  # 语音转录 API（可选）
-SILICONFLOW_API_KEY=your_key    # 硅基流动 API（可选）
-```
-
----
-
-## 🎬 平台专用流程
-
-### 抖音平台流程
-
-抖音无字幕支持，必须使用 Plan B 语音转录：
-
-```
-Step 1: 元数据 (douyin_downloader.py)
-   ↓
-┌─────┴─────┐
-↓           ↓
-Step 2:    Step 3:
-Plan B     视频下载
-转录       (douyin_downloader)
-   ↓           ↓
-   └─────┬─────┘
-         ↓
-Step 4: 文本 (audio.txt → transcript.txt)
-   ↓
-Step 5: AI 分析 (DashScope API)
-   ↓
-Step 6: 截图 (ffmpeg)
-   ↓
-Step 7: OSS 上传
-   ↓
-Step 8: Markdown 渲染
-   ↓
-Step 9: Notion 推送
-```
-
-**抖音 URL 格式支持：**
-- `https://www.douyin.com/video/1234567890`
-- `https://v.douyin.com/abc123/` (短链)
-- `https://iesdouyin.com/share/video/1234567890`
-
-**元数据输出（metadata.json）：**
-```json
-{
-  "title": "视频标题",
-  "uploader": "作者昵称",
-  "uploader_id": "视频 ID",
-  "duration": 0,
-  "duration_string": "51:10",
-  "thumbnail": "封面 URL",
-  "webpage_url": "原始视频 URL",
-  "platform": "douyin",
-  "download_url": "无水印视频下载链接"
-}
-```
-
-### B 站/YouTube 流程
-
-支持 Plan A（官方字幕）优先：
-
-```
-Step 1: 元数据 (yt-dlp --dump-json)
-   ↓
-┌─────┴─────┐
-↓           ↓
-Step 2:    Step 3:
-字幕       视频下载
-(Cookies)  (yt-dlp)
-   ↓           ↓
-   └─────┬─────┘
-         ↓
-Step 4: 文本 (VTT → TXT)
-   ↓
-... (后续步骤相同)
-```
-
----
-
-## ✨ v0.1.5 新增特性
-
-### 1. 并行优化
-- **Step 2** (字幕下载) 和 **Step 4** (视频下载) 并行执行
-- 节省约 **30 秒** (32%↓)
-- 总耗时从 180 秒降至 150 秒
-
-**并行实现：**
-```bash
-# 任务 A: 视频下载（后台）
-(
-    # 视频下载逻辑
-) &
-VIDEO_PID=$!
-
-# 任务 B: 字幕处理（后台）
-(
-    # 字幕下载/转录逻辑
-) &
-SUBTITLE_PID=$!
-
-# 等待两个任务完成
-wait $VIDEO_PID
-wait $SUBTITLE_PID
-```
-
-### 2. 标签提取策略
-
-**四层策略:**
-```
-1. 标题 hashtag → #([\w\u4e00-\u9fa5]+)
-2. 元数据 tags  → yt-dlp 提取的原始标签
-3. AI 关键词    → AI 分析提取的核心概念
-4. 默认值      → 视频总结/知识分享/学习
-```
-
-**标签规则:**
-- 长度：2-15 字符 (兼容英文如 "openclaw")
-- 数量：最多 5 个
-- 去重：自动去重，保留唯一值
-
-**Notion 解析:**
-- 优先从 Markdown `**Tags:**` 行提取
-- 格式：`**Tags:** `tag1` `tag2` `tag3``
-- 回退到 `video_desc` 字段
-
-### 3. GPU 自适应
-- 自动检测 NVIDIA GPU 和显存
-- 根据显存选择 Faster-Whisper 模型
-- 无 GPU 时自动降级到 CPU 模式
-
-### 4. 日志系统
-- 新增日志级别：`log_info` / `log_warn` / `log_error` / `log_debug`
-- 错误日志输出到 `$OUTPUT_DIR/error.log`
-- 支持 `--verbose` 模式查看调试信息
-
 ---
 
 ## 📁 输出文件结构
 
 ```
 output/
-├── summary.md              # 📝 最终总结 (主要成果)
+├── summary.md              # 📝 最终总结（主要成果）
 ├── screenshot_urls.txt     # 🔗 截图 OSS 链接
 ├── metadata.json           # 📊 视频元数据
 ├── transcript.txt          # 📄 纯文本字幕
-├── screenshots/            # 📸 截图原图 (本地备份)
-└── *.log                   # 📋 日志文件 (verbose 模式)
+├── screenshots/            # 📸 截图原图（本地备份）
+├── cover.jpg              # 🖼️ 封面图（本地备份）
+└── *.log                   # 📋 日志文件（verbose 模式）
 ```
 
----
+### OSS 路径规范
 
-## 📊 OSS 路径规范
+**截图路径**: `/screenshots/<平台>/<视频 ID>_<时间戳>/<截图文件>`
 
-**格式**: `/screenshots/<平台>/<视频 ID>_<时间戳>/<截图文件>`
-
-**示例:**
 ```
 screenshots/bilibili/BV1eTPEzNEqf_20260405_053203/screenshot_01.jpg
 screenshots/douyin/7234567890_20260405_175010/chapter_01.jpg
@@ -362,87 +362,55 @@ screenshots/xhs/69c1493b000000002003b3ce_20260405_152852/screenshot_01.jpg
 screenshots/youtube/dQw4w9WgXcQ_20260405_120000/screenshot_01.jpg
 ```
 
-**关键点:**
-- ✅ 路径必须包含时间戳，避免重复视频覆盖
-- ✅ `upload-to-oss.py auto` 模式自动生成正确路径
-- ✅ `summary.md` 渲染前需确保 `screenshot_urls.txt` 已更新
-- ✅ OSS Bucket 必须公开可读（直接 URL 访问）
+**封面路径**: `/covers/<平台>/<视频 ID>_<时间戳>/cover.jpg`
 
----
-
-## ⚙️ 配置（`~/.openclaw/.env`）
-
-```bash
-# OSS 图床（必需）
-ALIYUN_OSS_AK=your_access_key_id
-ALIYUN_OSS_SK=your_access_key_secret
-ALIYUN_OSS_BUCKET_ID=your_bucket_name
-ALIYUN_OSS_ENDPOINT=oss-cn-shanghai.aliyuncs.com
-
-# Notion（可选，自动推送时需要）
-NOTION_API_KEY=your_notion_api_key
-NOTION_VIDEO_SUMMARY_DATABASE_ID=your_database_id
-
-# AI 分析（必需）
-DASHSCOPE_API_KEY=your_dashscope_api_key
-
-# Plan B 语音转录（可选）
-GROQ_API_KEY=your_groq_api_key
-SILICONFLOW_API_KEY=your_siliconflow_api_key
-
-# 本地 Whisper（可选）
-WHISPER_MODEL=base  # tiny/base/small/medium/large
-USE_LOCAL_WHISPER=false  # true 强制使用本地 Whisper
+```
+covers/bilibili/BV1eTPEzNEqf_20260405_053203/cover.jpg
+covers/douyin/7234567890_20260405_175010/cover.jpg
 ```
 
-### 平台 Cookies 要求
-
-| 平台 | Cookies 文件 | 必需 | 获取方式 |
-|------|-------------|------|----------|
-| B 站 | `~/.cookies/bilibili_cookies.txt` | 推荐 | `bili-login.sh` 扫码 |
-| 抖音 | `~/.cookies/douyin_cookies.txt` | ❌ | 专用下载器无需 Cookies |
-| 小红书 | `~/.cookies/xiaohongshu_cookies.txt` | ❌ | Plan B 无需 Cookies |
-| YouTube | `~/.cookies/youtube_cookies.txt` | ❌ | 自动字幕无需 Cookies |
-
 ---
 
-## 📋 命令行选项
+## 🏷️ 标签策略
 
-| 选项 | 说明 | 默认 |
-|------|------|------|
-| `--verbose`, `-v` | 详细日志 | 关闭 |
-| `--keep-video` | 保留视频/音频 | 清理 |
-| `--push` | 自动推送 Notion | 手动 |
-| `--resume` | 从中断恢复 | 从头开始 |
+### 四层提取策略
 
----
+```
+1. 标题 hashtag → #([\w\u4e00-\u9fa5]+)
+   示例："#AI 教程 #大模型原理" → ["AI 教程", "大模型原理"]
 
-## 📝 输出格式（summary.md）
+2. 元数据 tags → yt-dlp 提取的原始标签
+   示例：["原理", "AI", "教程", "claude", "大模型"]
 
-1. **标题 + Tags + Author**
-2. **📝 Note** — AI 概述
-3. **📺 视频信息** — 链接/时长/播放数据
-4. **📚 关键概念** — 术语表格（按时间排序）
-5. **🎯 核心要点** — emoji+ 描述 + 时间戳
-6. **🎬 视频章节** — 标题 + 时间轴 + 截图
-7. **⚠️ 注意事项** — 特别提醒
-8. **💡 总结** — AI 归纳
+3. AI 关键词 → AI 分析提取的核心概念
+   示例：["Transformer", "注意力机制", "深度学习"]
+
+4. 默认值 → 视频总结/知识分享/学习
+   当前三层都为空时使用
+```
+
+### 标签规则
+
+- **长度**: 2-15 字符（兼容英文如 "openclaw"）
+- **数量**: 最多 5 个
+- **去重**: 自动去重，保留唯一值
+- **优先级**: 1 → 2 → 3 → 4
 
 ---
 
 ## 🔧 故障排查
 
-### Cookies 过期
+### Cookies 过期（B 站）
 
 ```bash
-# 扫码更新
+# 重新扫码登录
 ./bili-login.sh
 ```
 
 ### 配置检查
 
 ```bash
-# 运行检查
+# 运行检查脚本
 ./check-config.sh
 ```
 
@@ -450,86 +418,72 @@ USE_LOCAL_WHISPER=false  # true 强制使用本地 Whisper
 
 ```bash
 # 使用 verbose 模式
-./video-summarize.sh "URL" /tmp/output --verbose
+./video-summarize.sh "URL" --verbose
 
-# 查看日志文件
-cat /tmp/output/error.log          # 错误日志
-cat /tmp/output/oss_upload.log     # OSS 上传日志
-cat /tmp/output/ai_analysis.log    # AI 分析日志
+# 查看错误日志
+cat /tmp/output/error.log
 ```
 
 ### 常见问题
 
 | 问题 | 原因 | 解决方案 |
 |------|------|----------|
-| 截图 404 | OSS 路径不匹配 | 使用 `upload-to-oss.py auto` 重新上传 |
+| 截图 404 | OSS 路径不匹配 | `python3 upload-to-oss.py auto /tmp/output` |
 | 标签默认值 | 标签提取失败 | 检查标题 hashtag 格式 `#标签` |
-| 转录失败 | 无 GPU/API 配额 | 检查 `GROQ_API_KEY` 或 `SILICONFLOW_API_KEY` |
+| 转录失败 | 无 GPU/API 配额 | 检查 `GROQ_API_KEY` |
 | Notion 推送失败 | API Key 过期 | 更新 `NOTION_API_KEY` |
 | 并行任务失败 | 依赖缺失 | 检查 `ffmpeg` / `yt-dlp` 安装 |
+| 抖音下载失败 | 链接格式错误 | 使用完整 URL 或 v.douyin.com 短链 |
 
 ---
 
-## 📂 项目文件结构
+## 📊 性能基准
 
-```
-video-summarizer/
-├── SKILL.md                  # 完整技能文档 (本文档)
-├── README.md                 # 快速入门
-├── CHANGELOG.md              # 版本变更日志
-├── CODE_AUDIT_20260405.md    # v0.1.5 代码审计报告
-├── prompt.json               # AI 提示词配置
-├── scripts/                  # 核心脚本
-│   ├── video-summarize.sh    # 主流程 (Plan A/B 自动，并行优化)
-│   ├── upload-to-oss.py      # OSS 图床上传 (截图 + 封面)
-│   ├── push-to-notion.py     # Notion 推送 (标签解析)
-│   ├── analyze-subtitles-ai.py # AI 分析 + Markdown 渲染 (标签提取)
-│   ├── download-audio.sh     # Plan B: 音频下载
-│   ├── transcribe-audio.py   # Plan B: 语音转录 (GPU 自适应)
-│   ├── check-config.sh       # 配置检查
-│   ├── bili-login.sh         # B 站扫码登录
-│   └── douyin_downloader.py  # 抖音专用下载工具 (无需 Cookies)
-└── templates/
-    └── summary.md            # 总结文档模板
-```
+### 处理时间（10 分钟视频）
 
-**说明:**
-- ✅ `scripts/` 目录包含所有核心脚本，均为可执行文件 (755)
-- ✅ `templates/` 目录包含 Markdown 模板
-- ✅ `douyin_downloader.py` 为抖音专用下载器，无需 Cookies
-- ✅ `bili-login.sh` 仅 B 站需要，其他平台无需登录
+| 平台 | Plan A | Plan B（本地） | Plan B（Groq） |
+|------|--------|----------------|----------------|
+| **Bilibili** | ~90 秒 | ~150 秒 | ~120 秒 |
+| **YouTube** | ~90 秒 | ~150 秒 | ~120 秒 |
+| **小红书** | - | ~150 秒 | ~120 秒 |
+| **抖音** | - | ~150 秒 | ~120 秒 |
+
+**优化效果**: 并行优化后节省约 30 秒（32%↓）
 
 ---
 
-## 🔜 后续优化方向
+## 📝 输出格式（summary.md）
 
-### v0.1.6 计划
+1. **标题 + Tags + Author**
+2. **📝 Note** — AI 概述（150-250 字）
+3. **📺 视频信息** — 链接/时长/播放数据
+4. **📚 关键概念** — 术语表格（3-5 个，按时间排序）
+5. **🎯 核心要点** — emoji+ 描述 + 时间戳（5-8 个）
+6. **🎬 视频章节** — 标题 + 时间轴 + 截图
+7. **⚠️ 注意事项** — 特别提醒（2-4 个）
+8. **💡 总结** — AI 归纳（200-300 字）
 
-**高优先级:**
-- [ ] 重构 `push-to-notion.py`（提取平台分支为独立函数）
-- [ ] 添加单元测试（核心函数覆盖率 80%+）
-- [ ] 完善错误处理和日志（结构化日志格式）
+---
 
-**中优先级:**
+## 🔜 后续优化
+
+### 计划中
+
+- [ ] 代码重构（提取公共函数）
+- [ ] 单元测试（核心函数覆盖率 80%+）
 - [ ] 性能优化（截图并行上传、结果缓存）
-- [ ] 文档完善（API 参考、故障排查手册）
-
-**低优先级:**
 - [ ] 支持更多平台（TikTok、Instagram Reels）
-- [ ] Web UI（可选）
 
 ---
 
 ## 📞 更多文档
 
-- **快速入门:** [README.md](README.md) - 快速开始、命令行选项
-- **变更日志:** [CHANGELOG.md](CHANGELOG.md) - 版本历史
-- **提示词配置:** [prompt.json](prompt.json) - AI 分析参数
-- **代码审计:** [CODE_AUDIT_20260405.md](CODE_AUDIT_20260405.md) - v0.1.5 代码审计报告
+- **快速入门**: [README.md](README.md) - 5 分钟上手
+- **变更历史**: [CHANGELOG.md](CHANGELOG.md) - 版本演进
+- **提示词配置**: [prompt.json](prompt.json) - AI 分析参数
 
 ---
 
-**维护人:** Ajay Hao  
-**文档:** `~/.openclaw/skills/video-summarizer/SKILL.md`  
-**版本:** v0.1.5  
-**发布日期:** 2026-04-05
+**维护人**: Ajay Hao  
+**项目地址**: https://github.com/AjayHao/video-summarizer  
+**OpenClaw Skill**: 已发布到 clawdhub
