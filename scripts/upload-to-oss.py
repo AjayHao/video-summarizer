@@ -4,7 +4,8 @@
 用于 video-summarizer 技能，自动上传截图到阿里云 OSS
 
 路径规范：
-/screenshots/<平台名>/<视频 ID>/<截图文件>
+/screenshots/<平台名>/<视频 ID>_<时间戳>/<截图文件>
+/thumbnails/<平台>/<视频 ID>/cover.jpg
 
 支持平台：
 - bilibili (B 站)
@@ -144,7 +145,7 @@ def upload_screenshots(screenshots_dir: str, prefix: str = "screenshots/", publi
     
     Args:
         screenshots_dir: 截图目录路径
-        prefix: OSS 存储路径前缀（格式：screenshots/<平台>/<视频 ID>/）
+        prefix: OSS 存储路径前缀（格式：screenshots/<平台>/<视频 ID_<时间戳>/）
         public: 是否返回公开 URL
     
     Returns:
@@ -199,7 +200,7 @@ def build_prefix(video_url: str = None, metadata_file: str = None) -> str:
     """
     构建 OSS 上传路径前缀
     
-    格式：/screenshots/<平台名>/<视频 ID>/
+    格式：/screenshots/<平台名>/<视频 ID_<时间戳>/
     
     Args:
         video_url: 视频 URL（可选）

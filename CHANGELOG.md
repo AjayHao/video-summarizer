@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.2] - 2026-04-06
+
+### 🐛 Bug 修复
+
+**OSS 路径规范修正**:
+- 截图路径添加时间戳，避免同视频多次运行覆盖旧文件
+  - 格式：`/screenshots/<平台>/<视频 ID>_<时间戳>/`
+- 封面路径独立到 `/thumbnails/` 目录，不含时间戳
+  - 格式：`/thumbnails/<平台>/<视频 ID>/cover.jpg`
+
+### 📝 文档更新
+
+- `SKILL.md`: 更新封面路径示例
+- `CHANGELOG.md`: 修正封面目录名称（`/covers/` → `/thumbnails/`）
+- `scripts/upload-to-oss.py`: 更新注释说明
+
+---
+
 ## [1.0.1] - 2026-04-05
 
 ### 🐛 Bug 修复
@@ -66,7 +84,7 @@ Video Summarizer OpenClaw Skill v1.0.0 正式发布！
 
 **图床集成**:
 - 阿里云 OSS 自动上传
-- 路径规范：截图 `/screenshots/`，封面 `/covers/`
+- 路径规范：截图 `/screenshots/`，封面 `/thumbnails/`
 - 永久链接，支持 Notion 嵌入
 
 **一键推送**:

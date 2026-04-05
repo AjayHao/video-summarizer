@@ -38,7 +38,7 @@ metadata:
 
 将 B 站/YouTube/小红书/抖音视频转换为结构化 Notion 总结文档，自动上传截图，一键推送 Notion。
 
-**版本**: 1.0.1  
+**版本**: 1.0.2  
 **发布**: 2026-04-05  
 **许可**: MIT  
 **作者**: Ajay Hao
@@ -390,11 +390,11 @@ screenshots/xhs/69c1493b000000002003b3ce_20260405_152852/screenshot_01.jpg
 screenshots/youtube/dQw4w9WgXcQ_20260405_120000/screenshot_01.jpg
 ```
 
-**封面路径**: `/covers/<平台>/<视频 ID>_<时间戳>/cover.jpg`
+**封面路径**: `thumbnails/<平台>/<视频 ID>/cover.jpg`
 
 ```
-covers/bilibili/BV1eTPEzNEqf_20260405_053203/cover.jpg
-covers/douyin/7234567890_20260405_175010/cover.jpg
+thumbnails/bilibili/BV1eTPEzNEqf/cover.jpg
+thumbnails/douyin/7234567890/cover.jpg
 ```
 
 ---
