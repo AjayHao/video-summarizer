@@ -164,15 +164,6 @@ extract_video_id() {
                 echo "unknown"
             fi
             ;;
-        wxvideo)
-            # 微信视频号：提取 ID 或使用 URL 哈希
-            if [[ "$url" =~ vid=([a-zA-Z0-9]+) ]]; then
-                echo "${BASH_REMATCH[1]}"
-            else
-                # 使用 URL 的 MD5 前 12 位作为标识
-                echo "$url" | md5sum | cut -c1-12
-            fi
-            ;;
         *)
             echo "unknown"
             ;;

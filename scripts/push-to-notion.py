@@ -57,8 +57,7 @@ def parse_markdown(md_file):
         'douyin': '抖音',
         'bilibili': 'Bilibili',
         'xiaohongshu': '小红书',
-        'youtube': 'YouTube',
-        'wechat': '微信视频'
+        'youtube': 'YouTube'
     }
     source = platform_map.get(platform, 'Unknown')
     
@@ -72,8 +71,6 @@ def parse_markdown(md_file):
             source = "抖音"
         elif "youtube.com" in video_url or "youtu.be" in video_url:
             source = "YouTube"
-        elif "channels.weixin.qq.com" in video_url:
-            source = "微信视频"
     
     with open(md_file, 'r', encoding='utf-8') as f:
         content = f.read()
@@ -389,34 +386,6 @@ def parse_markdown(md_file):
         publish_date = metadata.get('upload_date', '')
         
         # 封面：从 metadata 获取 thumbnail
-        cover_url = metadata.get('thumbnail', '')
-    
-    # ========== 微信视频分支 ==========
-    elif source == '微信视频':
-        # 标题：从 Markdown 提取
-        title_match = re.search(r'^#\s+(.+)$', content, re.MULTILINE)
-        title = title_match.group(1).strip() if title_match else "视频总结"
-        if len(title) > 40:
-            title = title[:37] + '...'
-        
-        # Note：从 Markdown 提取
-        note_match = re.search(r'## 📝 Note\n\n(.*?)(?=\n---|\n##)', content, re.DOTALL)
-        note = note_match.group(1).strip() if note_match else ""
-        
-        # Tags：微信视频通常没有标签，使用默认
-        tags = []
-        
-        # UP 主：从 Markdown 提取
-        author_match = re.search(r'\*\*UP 主:\*\*\s*(.+)$', content, re.MULTILINE)
-        author = author_match.group(1).strip() if author_match else metadata.get('uploader', '')
-        
-        # 时长：从 metadata 获取
-        duration = metadata.get('duration_string', '')
-        
-        # 发布日期：从 metadata 获取
-        publish_date = metadata.get('upload_date', '')
-        
-        # 封面：从 metadata 获取
         cover_url = metadata.get('thumbnail', '')
     
     # ========== 默认分支（Unknown）==========
@@ -827,10 +796,10 @@ def push_to_notion(md_file, database_id=None):
     print(f"   封面：{data.get('cover_url', 'N/A')}")
     
     # 构建页面属性（适配 Notion 数据库字段类型）
-    # 字段类型：Name=title, Source=rich_text, Author=rich_text, Url=url, 
+    # 字段类型：Title=title, Source=rich_text, Author=rich_text, Url=url, 
     #           Tags=multi_select, PubDate=date, Length=rich_text, Cover=files
     properties = {
-        "Name": {
+        "Title": {
             "title": [
                 {
                     "type": "text",

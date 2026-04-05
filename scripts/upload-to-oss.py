@@ -12,7 +12,6 @@
 - douyin (抖音)
 - xhs (小红书)
 - youtube (YouTube)
-- wxvideo (微信视频)
 
 支持：
 1. 公开读 Bucket：直接返回永久访问链接

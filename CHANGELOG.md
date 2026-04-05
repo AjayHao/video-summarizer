@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.3] - 2026-04-06
+
+### 🗑️ 平台精简
+
+**移除微信视频号支持**:
+- 微信视频号已不支持外链访问，移除相关代码
+- 删除 `wxvideo` 平台判断逻辑
+- 精简 `push-to-notion.py` 微信分支代码
+- 删除 `video-summarize.sh` 微信 ID 提取逻辑
+
+### 📝 文档更新
+
+- 版本号统一更新为 1.0.3
+- 发布日期更新为 2026-04-06
+- 模板文件版本同步更新
+
+### ✅ 核心平台（4 个）
+
+- Bilibili（B 站）
+- YouTube
+- 小红书
+- 抖音
+
+---
+
 ## [1.0.2] - 2026-04-06
 
 ### 🐛 Bug 修复

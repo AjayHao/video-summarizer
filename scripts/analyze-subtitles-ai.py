@@ -454,8 +454,6 @@ def generate_markdown(video_info: dict, ai_result: dict, screenshot_urls: list, 
             source = "抖音"
         elif "youtube.com" in webpage_url or "youtu.be" in webpage_url:
             source = "YouTube"
-        elif "channels.weixin.qq.com" in webpage_url:
-            source = "微信视频"
     
     # 格式化日期（处理时间戳和字符串两种格式）
     if upload_date:
@@ -793,7 +791,7 @@ AI 分析暂时不可用，请稍后重试。
 ---
 
 *生成时间：{datetime.now().strftime("%Y-%m-%d")}*
-*技能版本：video-summarizer v1.0.2*
+*技能版本：video-summarizer v1.0.3*
 """
         with open(output_file, 'w', encoding='utf-8') as f:
             f.write(md_content)
