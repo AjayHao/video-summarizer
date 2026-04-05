@@ -38,7 +38,7 @@ metadata:
 
 将 B 站/YouTube/小红书/抖音视频转换为结构化 Notion 总结文档，自动上传截图，一键推送 Notion。
 
-**版本**: 1.0.0  
+**版本**: 1.0.1  
 **发布**: 2026-04-05  
 **许可**: MIT  
 **作者**: Ajay Hao
@@ -208,17 +208,45 @@ USE_LOCAL_WHISPER=false  # true 强制使用本地 Whisper
 
 ### Notion 数据库配置
 
-1. 创建数据库，添加以下字段：
-   - `标题` (Title)
-   - `Tags` (Multi-select)
-   - `Author` (Rich text)
-   - `Platform` (Select: Bilibili/YouTube/小红书/抖音)
-   - `URL` (URL)
-   - `Duration` (Rich text)
-   - `Created` (Created time)
+#### 数据库属性（Properties）
 
-2. 获取 Database ID：
+| 属性名 | 类型 | 说明 | 来源 |
+|--------|------|------|------|
+| **Title** | `title` | 视频标题（≤200 字符） | Markdown `# 标题` |
+| **Source** | `rich_text` | 平台来源（Bilibili/YouTube/小红书/抖音） | metadata.platform / URL 推断 |
+| **Author** | `rich_text` | UP 主/作者名称 | Markdown `**UP 主:**` / metadata.uploader |
+| **Url** | `url` | 视频原始链接 | metadata.webpage_url / Markdown `**链接:**` |
+| **Tags** | `multi_select` | 标签（最多 5 个） | 三层策略提取 |
+| **PubDate** | `date` | 发布日期 | metadata.upload_date |
+| **Length** | `rich_text` | 视频时长（MM:SS 格式） | metadata.duration_string |
+| **Cover** | `files` | 封面图片（可选，外部 URL） | metadata.thumbnail |
+| **ts** | `date` | 创建时间戳（ISO 8601，东八区 +08:00） | 当前时间 |
+
+#### 配置步骤
+
+1. **创建数据库**（Table 视图）
+
+2. **添加上述 9 个属性**（字段名必须完全匹配）
+
+3. **获取 Database ID**：
    - 打开数据库 → 复制 URL 中 `?v=` 后的 ID
+   - 示例：`https://notion.so/your-workspace/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx?v=yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy`
+   - Database ID = `yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy`
+
+4. **配置环境变量**：
+   ```bash
+   NOTION_API_KEY=nop_xxxxxxxxxxxxxxxx
+   NOTION_VIDEO_SUMMARY_DATABASE_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+   ```
+
+#### 数据库视图示例
+
+```
+┌─────────┬──────────┬─────────┬──────┬──────┬─────────┬────────┬───────┬─────────────┐
+│ Title   │ Source   │ Author  │ Url  │ Tags │ PubDate │ Length │ Cover │ ts          │
+│ title   │ text     │ text    │ url  │ multi│ date    │ text   │ files │ date        │
+└─────────┴──────────┴─────────┴──────┴──────┴─────────┴────────┴───────┴─────────────┘
+```
 
 ---
 
@@ -479,7 +507,7 @@ cat /tmp/output/error.log
 ## 📞 更多文档
 
 - **快速入门**: [README.md](README.md) - 5 分钟上手
-- **发布说明**: [RELEASE.md](RELEASE.md) - v1.0.0 详细说明
+- **变更历史**: [CHANGELOG.md](CHANGELOG.md) - 版本演进
 - **提示词配置**: [prompt.json](prompt.json) - AI 分析参数
 
 ---

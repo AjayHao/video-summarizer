@@ -1,6 +1,45 @@
-# Release Notes
+# Changelog
 
-## v1.0.0 — 2026-04-05
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+---
+
+## [1.0.1] - 2026-04-05
+
+### 🐛 Bug 修复
+
+**Notion 数据库配置修正**:
+- 修正 SKILL.md 中 Notion 数据库属性说明（与 push-to-notion.py 代码一致）
+- 字段名变更：`Name` → `Title`
+- 字段类型修正：`Source` 从 `select` 改为 `rich_text`
+- 新增字段说明：`PubDate`、`Length`、`Cover`、`ts`
+
+### 📝 文档更新
+
+**SKILL.md - Notion 数据库配置部分**:
+- 完整 9 个属性说明（类型、来源、格式）
+- 配置步骤详解（Database ID 获取方法）
+- 数据库视图示例
+
+**完整属性清单**:
+| 属性名 | 类型 | 说明 |
+|--------|------|------|
+| Title | `title` | 视频标题（≤200 字符） |
+| Source | `rich_text` | 平台来源 |
+| Author | `rich_text` | UP 主/作者 |
+| Url | `url` | 视频链接 |
+| Tags | `multi_select` | 标签（最多 5 个） |
+| PubDate | `date` | 发布日期 |
+| Length | `rich_text` | 视频时长（MM:SS 格式） |
+| Cover | `files` | 封面图片（可选，外部 URL） |
+| ts | `date` | 创建时间戳（ISO 8601，东八区 +08:00） |
+
+---
+
+## [1.0.0] - 2026-04-05
 
 ### 🎉 正式发布
 
@@ -72,7 +111,3 @@ v1.0.0 之前的 0.1.x 版本为开发过程版本，功能已整合到 v1.0.0�
 
 如需查看完整版本历史，请参考 Git 提交记录：
 https://github.com/AjayHao/video-summarizer/commits/main
-
----
-
-**发布说明**: v1.0.0 是首个稳定版本，适用于生产环境。

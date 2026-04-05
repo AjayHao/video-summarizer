@@ -2,7 +2,7 @@
 
 🎬 将 B 站/YouTube/小红书/抖音视频转换为结构化 Notion 总结
 
-**版本**: 1.0.0  
+**版本**: 1.0.1  
 **发布**: 2026-04-05  
 **许可**: MIT
 
@@ -91,7 +91,7 @@ cat output/summary.md
 ## 📚 详细文档
 
 - **[SKILL.md](SKILL.md)** - 完整技能文档（平台配置、架构说明、故障排查）
-- **[RELEASE.md](RELEASE.md)** - 发布说明
+- **[CHANGELOG.md](CHANGELOG.md)** - 版本历史
 
 ---
 
