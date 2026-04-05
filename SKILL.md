@@ -1,3 +1,39 @@
+---
+name: video-summarizer
+description: "将 B 站/YouTube/小红书/抖音视频转换为结构化 Notion 总结文档，自动上传截图，一键推送 Notion"
+metadata:
+  {
+    "openclaw":
+      {
+        "emoji": "🎬",
+        "requires": { "bins": ["ffmpeg", "yt-dlp"], "env": ["DASHSCOPE_API_KEY", "ALIYUN_OSS_AK", "ALIYUN_OSS_SK", "ALIYUN_OSS_BUCKET_ID"] },
+        "install":
+          [
+            {
+              "id": "brew",
+              "kind": "brew",
+              "formula": "ffmpeg yt-dlp",
+              "bins": ["ffmpeg", "yt-dlp"],
+              "label": "Install ffmpeg and yt-dlp (brew)",
+            },
+            {
+              "id": "apt",
+              "kind": "apt",
+              "packages": "ffmpeg yt-dlp",
+              "bins": ["ffmpeg", "yt-dlp"],
+              "label": "Install ffmpeg and yt-dlp (apt)",
+            },
+            {
+              "id": "pip",
+              "kind": "pip",
+              "packages": "requests oss2 python-dotenv",
+              "label": "Install Python dependencies",
+            },
+          ],
+      },
+  }
+---
+
 # Video Summarizer — OpenClaw Skill
 
 将 B 站/YouTube/小红书/抖音视频转换为结构化 Notion 总结文档，自动上传截图，一键推送 Notion。
