@@ -51,6 +51,8 @@ PLATFORM_PATTERNS = {
     'douyin': [
         r'douyin\.com/video/(\d+)',
         r'iesdouyin\.com/share/video/(\d+)',
+        r'v\.douyin\.com/([\w-]+)',
+        r'douyin\.com/([\w-]+)',
     ],
     'xhs': [
         r'xiaohongshu\.com/discovery/item/(\w+)',
@@ -60,10 +62,6 @@ PLATFORM_PATTERNS = {
         r'youtube\.com/watch\?v=([\w-]+)',
         r'youtu\.be/([\w-]+)',
     ],
-    'wxvideo': [
-        r'channels\.wechat\.com/mp/newfeed/(\d+)',
-        r'tencent\.com/video/(\w+)',
-    ],
 }
 
 
@@ -72,7 +70,7 @@ def detect_platform(video_url: str) -> tuple:
     从视频 URL 识别平台和视频 ID
     
     Returns:
-        tuple: (platform, video_id) 或 (None, None)
+        tuple: (platform, video_id)，识别失败返回 ('unknown', 'unknown')
     """
     for platform, patterns in PLATFORM_PATTERNS.items():
         for pattern in patterns:
@@ -83,7 +81,8 @@ def detect_platform(video_url: str) -> tuple:
                 video_id = re.sub(r'[^a-zA-Z0-9_-]', '', video_id)
                 return platform, video_id
     
-    return None, None
+    # 识别失败，返回默认值
+    return 'unknown', 'unknown'
 
 
 def upload_to_oss(local_file_path: str, remote_key: str = None, public: bool = False, expires: int = 7200) -> dict:
@@ -170,7 +169,9 @@ def upload_screenshots(screenshots_dir: str, prefix: str = "screenshots/", publi
     results = []
     for img_file in image_files:
         # 构建远程键名（使用正斜杠）
-        remote_key = f"{prefix}{img_file.name}".replace('\\', '/')
+        # 确保 prefix 以 / 结尾
+        prefix_normalized = prefix.rstrip('/') + '/'
+        remote_key = f"{prefix_normalized}{img_file.name}".replace('\\', '/')
         
         print(f"📤 上传：{img_file.name} ...", file=sys.stderr)
         result = upload_to_oss(str(img_file), remote_key, public)
@@ -212,20 +213,24 @@ def build_prefix(video_url: str = None, metadata_file: str = None) -> str:
     
     # 尝试从 URL 识别平台
     if video_url:
-        platform, video_id = detect_platform(video_url)
+        result = detect_platform(video_url)
+        platform = result[0] if result[0] else 'unknown'
+        video_id = result[1] if result[1] else 'unknown'
     
     # 如果 URL 识别失败，尝试从元数据文件获取
-    if platform == 'unknown' and metadata_file and os.path.exists(metadata_file):
+    if platform in ['unknown', None] and metadata_file and os.path.exists(metadata_file):
         try:
             import json
             with open(metadata_file, 'r', encoding='utf-8') as f:
                 metadata = json.load(f)
                 video_url = metadata.get('webpage_url', '')
                 if video_url:
-                    platform, video_id = detect_platform(video_url)
+                    result = detect_platform(video_url)
+                    platform = result[0] if result[0] else 'unknown'
+                    video_id = result[1] if result[1] else 'unknown'
                 
                 # 如果还是未知，使用 uploader 作为备用
-                if platform == 'unknown':
+                if platform in ['unknown', None]:
                     uploader = metadata.get('uploader', 'unknown')
                     platform = re.sub(r'[^a-zA-Z0-9]', '', uploader)[:20].lower()
                     if not platform:
@@ -275,9 +280,26 @@ def upload_thumbnail(metadata_file: str, output_file: str = None, public: bool =
         if not thumbnail_url:
             return {'success': False, 'error': '无封面图 URL'}
         
-        # 构建 OSS 路径
-        prefix = build_prefix(metadata_file=metadata_file)
-        remote_key = f"thumbnails/{prefix}/cover.jpg"
+        # 构建 OSS 路径（不带时间戳，支持覆盖）
+        # 格式：thumbnails/<平台>/<视频 ID>/cover.jpg
+        platform = metadata.get('platform', 'unknown')
+        video_id = metadata.get('id', 'unknown')
+        
+        # 如果 platform/video_id 缺失，尝试从 URL 识别
+        if platform in ['unknown', None] or video_id in ['unknown', None]:
+            video_url = metadata.get('webpage_url', '')
+            if video_url:
+                result = detect_platform(video_url)
+                if not platform or platform == 'unknown':
+                    platform = result[0]
+                if not video_id or video_id == 'unknown':
+                    video_id = result[1]
+        
+        # 清理平台名和视频 ID（移除特殊字符）
+        platform = re.sub(r'[^a-zA-Z0-9]', '', platform)[:20].lower() or 'unknown'
+        video_id = re.sub(r'[^a-zA-Z0-9_-]', '', video_id)[:50] or 'unknown'
+        
+        remote_key = f"thumbnails/{platform}/{video_id}/cover.jpg"
         
         # 下载封面图
         print(f"🖼️  下载封面：{thumbnail_url[:50]}...", file=sys.stderr)
