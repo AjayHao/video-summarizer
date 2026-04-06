@@ -7,6 +7,318 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+# Changelog - v1.0.7
+
+**发布日期**: 2026-04-07  
+**上一版本**: v1.0.6 (2026-04-06)
+
+---
+
+## 🎯 版本概述
+
+v1.0.7 是一个 **B 站登录与 Cookies 支持完善** 版本，专注于修复 B 站扫码登录流程和 yt-dlp Cookies 参数传递问题，确保 B 站视频处理能够绕过 412 风控限制。
+
+**核心改进**:
+- ✅ 修复 B 站扫码登录 Cookies 路径检测
+- ✅ 支持 biliup 新格式 Cookie 转换
+- ✅ 全链路添加 yt-dlp `--cookies` 参数
+- ✅ 保留 Cookie 原始过期时间
+
+---
+
+## 🐛 Bug 修复
+
+### 1. B 站扫码登录 Cookies 路径检测失败
+
+**问题**: `biliup login` 在**当前工作目录**生成 `cookies.json`，但脚本检查的是 `~/.config/biliup/cookies.json`，路径不匹配导致检测失败。
+
+**修复方案**:
+- 修改 `bili-login.sh` 在脚本目录执行 `biliup login`
+- 直接检查 `$SCRIPT_DIR/cookies.json`
+- 增加预期路径提示，便于排查
+
+**修改文件**: `scripts/bili-login.sh` (第 8-42 行)
+
+**代码改动**:
+```bash
+# 修改前
+BILIUP_COOKIE="$HOME/.config/biliup/cookies.json"
+biliup login
+if [[ ! -f "$BILIUP_COOKIE" ]]; then
+    echo "❌ 登录失败"
+fi
+
+# 修改后
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BILIUP_COOKIE="$SCRIPT_DIR/cookies.json"
+cd "$SCRIPT_DIR"
+biliup login
+if [[ ! -f "$BILIUP_COOKIE" ]]; then
+    echo "❌ 登录失败，未找到 cookies.json"
+    echo "   预期路径：$BILIUP_COOKIE"
+    exit 1
+fi
+```
+
+---
+
+### 2. Cookie 转换不支持 biliup 新格式
+
+**问题**: `convert-bili-cookie.py` 只支持旧格式 `{"cookie": {...}}`，不支持 biliup 新格式 `{"cookie_info": {"cookies": [...]}}`，导致转换后 0 个 Cookie。
+
+**修复方案**:
+- 支持 3 种 Cookie 格式（新格式、旧格式、兼容模式）
+- 从 `cookie_info.cookies` 数组提取 Cookie
+- 保留原始过期时间（`expires` 字段）
+
+**修改文件**: `scripts/convert-bili-cookie.py` (第 17-62 行)
+
+**代码改动**:
+```python
+# 修改前
+cookies = data.get('cookie', {})
+if not cookies:
+    cookies = data
+
+expire_time = int(time.time()) + 7776000  # 硬编码 90 天
+
+# 修改后
+cookies_dict = {}
+
+# 格式 1: cookie_info.cookies 数组（biliup 新格式）
+cookie_info = data.get('cookie_info', {})
+if cookie_info and 'cookies' in cookie_info:
+    for cookie in cookie_info['cookies']:
+        name = cookie.get('name', '')
+        value = cookie.get('value', '')
+        if name and value:
+            cookies_dict[name] = value
+
+# 格式 2: cookie 对象（旧格式）
+# 格式 3: 直接就是 cookie 字典（兼容模式）
+
+# 保留原始过期时间
+expires_map = {}
+for cookie in cookie_info['cookies']:
+    name = cookie.get('name', '')
+    expires = cookie.get('expires', 0)
+    if name and expires:
+        expires_map[name] = expires
+
+expire_time = expires_map.get(field, int(time.time()) + 7776000)
+```
+
+**测试验证**:
+```json
+// 输入：biliup 新格式
+{
+  "cookie_info": {
+    "cookies": [
+      {"name": "SESSDATA", "value": "...", "expires": 1791038234}
+    ]
+  }
+}
+
+// 输出：Netscape 格式
+.bilibili.com	TRUE	/	TRUE	1791038234	SESSDATA	...
+```
+
+---
+
+### 3. yt-dlp 缺少 --cookies 参数（412 风控）
+
+**问题**: B 站视频处理时，yt-dlp 调用未传递 Cookies 参数，导致 412 风控错误。
+
+**影响范围**:
+- Step 1: 元数据获取（`--dump-json`）
+- Step 2: 视频下载（`-f best`）
+- Step 3: 字幕下载（`--write-auto-sub`）
+
+**修复方案**:
+- 所有 yt-dlp 调用增加 Cookies 检查
+- 有 Cookies 文件时添加 `--cookies` 参数
+- 无 Cookies 文件时保持原有行为（兼容）
+
+**修改文件**: `scripts/video-summarize.sh`
+
+#### 3.1 Step 1: 元数据获取（第 301-322 行）
+
+```bash
+# 修改前
+yt-dlp --dump-json "$VIDEO_URL" > "$OUTPUT_DIR/metadata.json"
+
+# 修改后
+if [[ -f "$COOKIES_FILE" ]]; then
+    yt-dlp --cookies "$COOKIES_FILE" --dump-json "$VIDEO_URL" > "$OUTPUT_DIR/metadata.json"
+else
+    yt-dlp --dump-json "$VIDEO_URL" > "$OUTPUT_DIR/metadata.json"
+fi
+```
+
+#### 3.2 Step 2: 视频下载（第 428-462 行）
+
+```bash
+# 修改前
+yt-dlp -f "bestvideo[height<=720]+bestaudio/best[height<=720]" \
+       --merge-output-format mp4 \
+       -o "$VIDEO_FILE" "$VIDEO_URL"
+
+# 修改后
+COOKIE_ARG=""
+if [[ -n "$COOKIES_FILE" && -f "$COOKIES_FILE" ]]; then
+    COOKIE_ARG="--cookies $COOKIES_FILE"
+fi
+
+yt-dlp $COOKIE_ARG -f "bestvideo[height<=720]+bestaudio/best[height<=720]" \
+       --merge-output-format mp4 \
+       -o "$VIDEO_FILE" "$VIDEO_URL"
+```
+
+#### 3.3 Step 3: 字幕下载（第 508-528 行）
+
+```bash
+# 修改前
+yt-dlp --write-auto-sub \
+       --sub-lang "zh-Hans,zh,en" \
+       --skip-download \
+       --convert-subs vtt \
+       -o "$OUTPUT_DIR/video" "$VIDEO_URL"
+
+# 修改后
+SUBTITLE_COOKIE_ARG=""
+if [[ -n "$COOKIES_FILE" && -f "$COOKIES_FILE" ]]; then
+    SUBTITLE_COOKIE_ARG="--cookies $COOKIES_FILE"
+fi
+
+yt-dlp $SUBTITLE_COOKIE_ARG --write-auto-sub \
+       --sub-lang "zh-Hans,zh,en" \
+       --skip-download \
+       --convert-subs vtt \
+       -o "$OUTPUT_DIR/video" "$VIDEO_URL"
+```
+
+---
+
+## 📊 变更统计
+
+### 文件修改
+
+| 文件 | 新增行 | 删除行 | 改动说明 |
+|------|--------|--------|----------|
+| `scripts/bili-login.sh` | +10 | -3 | 修复 Cookies 路径检测 |
+| `scripts/convert-bili-cookie.py` | +38 | -6 | 支持 biliup 新格式 + 保留过期时间 |
+| `scripts/video-summarize.sh` | +43 | -10 | 全链路添加 --cookies 参数 |
+| **总计** | **+91** | **-19** | **净增 +72 行** |
+
+### yt-dlp 调用统计
+
+| 步骤 | 调用位置 | Cookies 支持 | 数量 |
+|------|----------|-------------|------|
+| **Step 1: 元数据** | 第 305-322 行 | ✅ 已添加 | 6 处 |
+| **Step 2: 视频下载** | 第 440-462 行 | ✅ 已添加 | 4 处 |
+| **Step 3: 字幕下载** | 第 517-528 行 | ✅ 已添加 | 2 处 |
+| **总计** | - | ✅ 100% | **12 处** |
+
+---
+
+## 🧪 测试验证
+
+### B 站扫码登录
+
+```bash
+cd ~/.openclaw/skills/video-summarizer/scripts
+./bili-login.sh
+```
+
+**预期结果**:
+```
+✅ 登录成功
+🔄 转换 Cookies 格式...
+✅ Cookies 已保存：~/.cookies/bilibili_cookies.txt
+```
+
+### Cookie 转换
+
+```bash
+python3 convert-bili-cookie.py cookies.json ~/.cookies/bilibili_cookies.txt
+```
+
+**输入** (biliup 新格式):
+```json
+{
+  "cookie_info": {
+    "cookies": [
+      {"name": "SESSDATA", "value": "...", "expires": 1791038234}
+    ]
+  }
+}
+```
+
+**输出** (Netscape 格式):
+```
+✅ 转换成功 | 5 个 Cookie
+.bilibili.com	TRUE	/	TRUE	1791038234	SESSDATA	...
+```
+
+### B 站视频处理
+
+```bash
+./video-summarize.sh "https://www.bilibili.com/video/BV1j1ECzjE28" /tmp/test
+```
+
+**预期结果**:
+- ✅ 元数据获取成功（无 412 错误）
+- ✅ 视频下载成功
+- ✅ 字幕下载成功（或 Plan B 语音转录）
+- ✅ AI 分析成功
+- ✅ Notion 推送成功
+
+---
+
+## ⚠️ 兼容性说明
+
+### 向后兼容
+- ✅ 完全兼容 v1.0.6
+- ✅ 无 Cookies 文件时保持原有行为
+- ✅ 支持 biliup 新旧两种 Cookie 格式
+
+### 升级步骤
+```bash
+cd ~/.openclaw/skills/video-summarizer
+git pull origin main
+```
+
+### 依赖要求
+- **biliup**: >= 1.1.29（已安装）
+- **yt-dlp**: >= 2026.03.17
+- **ffmpeg**: >= 6.1
+
+---
+
+## 🔜 后续计划
+
+- [ ] 添加 Cookies 过期检测与自动刷新
+- [ ] 支持更多视频平台（TikTok、Instagram Reels）
+- [ ] 性能优化（截图并行上传、结果缓存）
+- [ ] 单元测试（核心函数覆盖率 80%+）
+
+---
+
+## 📞 反馈与支持
+
+- **GitHub Issues**: https://github.com/AjayHao/video-summarizer/issues
+- **Gitee Issues**: https://gitee.com/ajayhao/video-summarizer/issues
+- **OpenClaw Skill**: 已发布到 clawdhub
+- **维护人**: Ajay Hao
+
+---
+
+_感谢使用 Video Summarizer！_
+
+**生成时间**: 2026-04-07  
+**版本**: v1.0.7
+
+
 ## [1.0.6] - 2026-04-06
 
 ### 🐛 Bug 修复
