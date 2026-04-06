@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.5] - 2026-04-06
+
+### 🐛 Bug 修复
+
+**抖音下载链接提取失败**:
+- 修复 `video-summarize.sh` 中抖音下载链接提取 bug
+  - 从 `cut -d' ' -f2` 改为 `sed 's/下载链接：//'`
+  - 避免 URL 包含中文前缀导致 curl 失败
+- 修复 `download-audio.sh` 中同样的 URL 提取 bug
+- 用户反馈：专用下载器获取不到有效下载链接
+
+### 🔧 优化改进
+
+**移除抖音平台的 yt-dlp 依赖**:
+- 抖音只使用专用下载器（`douyin_downloader.py` + `curl`）
+- 移除 yt-dlp 降级逻辑（需要 cookies，防盗链限制）
+- 失败时直接退出，不回退到 yt-dlp
+- 非抖音平台继续使用 yt-dlp
+
+### 📊 变更统计
+
+- 修改文件：2 个
+- 新增代码：+16 行
+- 删除代码：-4 行
+
+### ✅ 核心平台（4 个）
+
+- **Bilibili（B 站）** - 完整支持
+- **YouTube** - 完整支持
+- **小红书** - 基本支持（语音转录）
+- **抖音** - 完整支持（专用下载器，无需 cookies）
+
 ## [1.0.4] - 2026-04-06
 
 ### ✨ 新增功能
