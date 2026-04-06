@@ -388,14 +388,26 @@ else
             
             if [[ -f "$DOUYIN_SCRIPT" ]]; then
                 python3 "$DOUYIN_SCRIPT" --link "$VIDEO_URL" --action info > "$VIDEO_LOG" 2>&1
-                DOWNLOAD_URL=$(grep "下载链接" "$VIDEO_LOG" | cut -d' ' -f2)
+                DOWNLOAD_URL=$(grep "下载链接" "$VIDEO_LOG" | sed 's/下载链接：//')
                 
                 if [[ -n "$DOWNLOAD_URL" ]]; then
                     log_info "[视频任务] 下载链接已获取"
-                    if curl -L -o "$VIDEO_FILE" "$DOWNLOAD_URL" 2>/dev/null; then
+                    log_info "[视频任务] 开始 curl 下载..." >> "$VIDEO_LOG"
+                    curl -L -o "$VIDEO_FILE" "$DOWNLOAD_URL" 2>&1 | tee -a "$VIDEO_LOG"
+                    CURL_EXIT=$?
+                    log_info "[视频任务] curl 退出码：$CURL_EXIT" >> "$VIDEO_LOG"
+                    log_info "[视频任务] 检查文件：$VIDEO_FILE" >> "$VIDEO_LOG"
+                    ls -lh "$VIDEO_FILE" >> "$VIDEO_LOG" 2>&1
+                    # 检查文件是否存在且大小 > 0
+                    if [[ -f "$VIDEO_FILE" && -s "$VIDEO_FILE" ]]; then
+                        log_info "[视频任务] 文件检查通过，设置 DOWNLOAD_SUCCESS=true" >> "$VIDEO_LOG"
                         DOWNLOAD_SUCCESS=true
-                        log_success "[视频任务] 抖音视频下载成功 | $(ls -lh "$VIDEO_FILE" 2>/dev/null | awk '{print $5}')" >> "$VIDEO_LOG"
+                        FILE_SIZE=$(ls -lh "$VIDEO_FILE" 2>/dev/null | awk '{print $5}')
+                        log_success "[视频任务] 抖音视频下载成功 | $FILE_SIZE" >> "$VIDEO_LOG"
+                    else
+                        log_warn "[视频任务] 文件检查失败" >> "$VIDEO_LOG"
                     fi
+                    log_info "[视频任务] DOWNLOAD_SUCCESS=$DOWNLOAD_SUCCESS" >> "$VIDEO_LOG"
                 fi
             else
                 log_warn "[视频任务] 抖音下载脚本不存在，回退到 yt-dlp"

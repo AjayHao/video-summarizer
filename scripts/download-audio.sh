@@ -38,7 +38,7 @@ if [[ "$PLATFORM" == "douyin" ]]; then
         
         # 获取下载链接
         VIDEO_INFO=$(python3 "$DOUYIN_SCRIPT" --link "$VIDEO_URL" --action info 2>&1)
-        DOWNLOAD_URL=$(echo "$VIDEO_INFO" | grep "下载链接" | cut -d' ' -f2)
+        DOWNLOAD_URL=$(echo "$VIDEO_INFO" | grep "下载链接" | sed 's/下载链接：//')
         
         if [[ -n "$DOWNLOAD_URL" ]]; then
             TEMP_VIDEO="/tmp/douyin_temp_$$.mp4"
