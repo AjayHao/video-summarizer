@@ -13,9 +13,13 @@
 ### 第一步：安装依赖
 
 ```bash
-# 系统依赖
-brew install ffmpeg  # macOS
-apt install ffmpeg   # Ubuntu/Debian
+# 系统依赖（最低版本：ffmpeg >= 6.1, yt-dlp >= 2026.03.17）
+brew install ffmpeg yt-dlp  # macOS
+apt install ffmpeg yt-dlp   # Ubuntu/Debian
+
+# 验证版本
+ffmpeg -version    # 应 >= 6.1
+yt-dlp --version   # 应 >= 2026.03.17
 
 # Python 依赖
 pip3 install requests oss2 python-dotenv

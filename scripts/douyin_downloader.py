@@ -473,22 +473,47 @@ def main():
     parser.add_argument("--api-key", "-k", help="硅基流动 API 密钥 (也可通过 DOUYIN_API_KEY 环境变量设置)")
     parser.add_argument("--save-video", "-v", action="store_true", help="提取文案时同时保存视频")
     parser.add_argument("--quiet", "-q", action="store_true", help="安静模式，减少输出")
+    parser.add_argument("--json", action="store_true", help="输出 JSON 格式（便于脚本解析）")
 
     args = parser.parse_args()
 
     try:
         if args.action == "info":
             info = get_video_info(args.link)
-            print("\n" + "=" * 50)
-            print("视频信息:")
-            print("=" * 50)
-            print(f"视频ID: {info['video_id']}")
-            print(f"标题: {info['title']}")
-            print(f"下载链接: {info['url']}")
-            print(f"作者：{info.get('author', '抖音用户')}")
-            print(f"时长：{info.get('duration_string', 'Unknown')}")
-            print(f"封面：{info.get('cover', '' )}")
-            print("=" * 50)
+            
+            if args.json:
+                # 输出 JSON 格式（便于脚本解析）
+                output = {
+                    "video_id": info.get("video_id", ""),
+                    "title": info.get("title", ""),
+                    "url": info.get("url", ""),
+                    "author": info.get("author", "抖音用户"),
+                    "duration_string": info.get("duration_string", "Unknown"),
+                    "cover": info.get("cover", ""),
+                    "create_time": info.get("create_time", 0),
+                    "upload_date": datetime.fromtimestamp(info["create_time"]).strftime("%Y%m%d") if info.get("create_time") else ""
+                }
+                import json
+                print(json.dumps(output, ensure_ascii=False, indent=2))
+            else:
+                # 输出人类可读格式
+                print("\n" + "=" * 50)
+                print("视频信息:")
+                print("=" * 50)
+                print(f"视频 ID: {info['video_id']}")
+                print(f"标题：{info['title']}")
+                print(f"下载链接：{info['url']}")
+                print(f"作者：{info.get('author', '抖音用户')}")
+                print(f"时长：{info.get('duration_string', 'Unknown')}")
+                print(f"封面：{info.get('cover', '' )}")
+                create_time = info.get('create_time', 0)
+                if create_time:
+                    pub_date = datetime.fromtimestamp(create_time).strftime('%Y%m%d')
+                    pub_datetime = datetime.fromtimestamp(create_time).isoformat()
+                    print(f"发布时间：{pub_date} ({pub_datetime})")
+                else:
+                    print(f"发布时间：Unknown")
+                print("=" * 50)
 
         elif args.action == "download":
             video_path = download_video(args.link, args.output)

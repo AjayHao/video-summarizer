@@ -1,5 +1,5 @@
 #!/bin/bash
-# video-summarize.sh - 视频总结生成完整流程 v0.1.4
+# video-summarize.sh - 视频总结生成完整流程 v1.0.4
 # 用法：./video-summarize.sh <视频 URL> [输出目录] [cookies 文件] [选项]
 
 set -e
@@ -143,9 +143,14 @@ extract_video_id() {
             fi
             ;;
         douyin)
-            # 抖音：提取视频 ID 或使用短链哈希
+            # 抖音：提取视频 ID（支持多种格式）
+            # 格式 1: /video/1234567890
             if [[ "$url" =~ /video/([0-9]+) ]]; then
                 echo "${BASH_REMATCH[1]}"
+            # 格式 2: ?modal_id=1234567890 (课程/精选视频)
+            elif [[ "$url" =~ modal_id=([0-9]+) ]]; then
+                echo "${BASH_REMATCH[1]}"
+            # 格式 3: 短链或其他
             elif [[ "$url" =~ /([a-zA-Z0-9_-]{10,})(\?|$) ]]; then
                 echo "${BASH_REMATCH[1]}"
             else
@@ -248,7 +253,7 @@ check_progress() {
     return 1
 }
 
-echo "🎬 Video Summarizer v0.1.4"
+echo "🎬 Video Summarizer v1.0.4"
 echo ""
 
 # Step 1: 元数据
@@ -265,16 +270,17 @@ else
         if [[ -f "$DOUYIN_SCRIPT" ]]; then
             log_info "抖音平台：使用专用工具获取元数据..."
             
-            # 获取视频信息
-            VIDEO_INFO=$(python3 "$DOUYIN_SCRIPT" --link "$VIDEO_URL" --action info 2>&1)
+            # 获取视频信息（JSON 格式，便于解析）
+            VIDEO_JSON=$(python3 "$DOUYIN_SCRIPT" --link "$VIDEO_URL" --action info --json 2>/dev/null)
             
-            # 解析信息
-            VIDEO_ID=$(echo "$VIDEO_INFO" | grep "视频 ID" | awk '{print $2}')
-            TITLE=$(echo "$VIDEO_INFO" | grep "标题" | sed 's/标题：//')
-            AUTHOR=$(echo "$VIDEO_INFO" | grep "作者" | sed 's/作者：//')
-            DURATION_STR=$(echo "$VIDEO_INFO" | grep "时长" | sed 's/时长：//')
-            COVER_URL=$(echo "$VIDEO_INFO" | grep "封面" | sed 's/封面：//')
-            DOWNLOAD_URL=$(echo "$VIDEO_INFO" | grep "下载链接" | awk '{print $2}')
+            # 使用 Python 解析 JSON
+            VIDEO_ID=$(echo "$VIDEO_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('video_id',''))")
+            TITLE=$(echo "$VIDEO_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('title',''))")
+            AUTHOR=$(echo "$VIDEO_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('author',''))")
+            DURATION_STR=$(echo "$VIDEO_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('duration_string',''))")
+            COVER_URL=$(echo "$VIDEO_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('cover',''))")
+            DOWNLOAD_URL=$(echo "$VIDEO_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('url',''))")
+            PUB_DATE=$(echo "$VIDEO_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('upload_date',''))")
             
             # 创建元数据 JSON
             cat > "$OUTPUT_DIR/metadata.json" << METAEOF
@@ -287,7 +293,8 @@ else
   "thumbnail": "$COVER_URL",
   "webpage_url": "$VIDEO_URL",
   "platform": "douyin",
-  "download_url": "$DOWNLOAD_URL"
+  "download_url": "$DOWNLOAD_URL",
+  "upload_date": "$PUB_DATE"
 }
 METAEOF
             
@@ -302,6 +309,33 @@ METAEOF
             yt-dlp --dump-json "$VIDEO_URL" > "$OUTPUT_DIR/metadata.json"
         else
             yt-dlp --dump-json "$VIDEO_URL" > "$OUTPUT_DIR/metadata.json" 2>/dev/null
+        fi
+        
+        # 为小红书提取 upload_date（从笔记 ID 解析）
+        if [[ "$PLATFORM" == "xhs" ]]; then
+            python3 << PYEOF >> "$OUTPUT_DIR/metadata.json"
+import json
+from datetime import datetime
+
+with open('$OUTPUT_DIR/metadata.json', 'r') as f:
+    meta = json.load(f)
+
+# 从笔记 ID 解析时间戳（前 8 位 hex）
+note_id = meta.get('id', '') or meta.get('display_id', '') or meta.get('webpage_url', '').split('/')[-1].split('?')[0]
+if len(note_id) >= 8:
+    try:
+        ts = int(note_id[:8], 16)
+        upload_date = datetime.fromtimestamp(ts).strftime('%Y%m%d')
+        meta['upload_date'] = upload_date
+    except:
+        meta['upload_date'] = ''
+else:
+    # 使用 yt-dlp 的 upload_date
+    meta['upload_date'] = meta.get('upload_date', '')
+
+with open('$OUTPUT_DIR/metadata.json', 'w') as f:
+    json.dump(meta, f, indent=2, ensure_ascii=False)
+PYEOF
         fi
     fi
     

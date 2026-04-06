@@ -300,8 +300,8 @@ def parse_markdown(md_file):
         author_match = re.search(r'\*\*Author:\*\*\s*(.+)$', content, re.MULTILINE)
         author = author_match.group(1).strip() if author_match else ''
         if not author or author == 'N/A':
-            # 从 metadata 获取
-            author = metadata.get('uploader', '')
+            # 从 metadata 获取（处理 None 的情况）
+            author = metadata.get('uploader') or metadata.get('uploader_id', '')
             # 如果是 ID 格式（16 进制），显示为平台用户
             if author and re.match(r'^[0-9a-f]{16,}$', author, re.IGNORECASE):
                 author = '小红书用户'

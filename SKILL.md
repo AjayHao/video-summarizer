@@ -6,7 +6,7 @@ metadata:
     "openclaw":
       {
         "emoji": "🎬",
-        "requires": { "bins": ["ffmpeg", "yt-dlp"], "env": ["DASHSCOPE_API_KEY", "ALIYUN_OSS_AK", "ALIYUN_OSS_SK", "ALIYUN_OSS_BUCKET_ID"] },
+        "requires": { "bins": ["ffmpeg (>=6.1)", "yt-dlp (>=2026.03.17)"], "env": ["DASHSCOPE_API_KEY", "ALIYUN_OSS_AK", "ALIYUN_OSS_SK", "ALIYUN_OSS_BUCKET_ID"] },
         "install":
           [
             {
@@ -39,7 +39,7 @@ metadata:
 将 B 站/YouTube/小红书/抖音视频转换为结构化 Notion 总结文档，自动上传截图，一键推送 Notion。
 
 **版本**: 1.0.4  
-**发布**: 2026-04-05  
+**发布**: 2026-04-06  
 **许可**: MIT  
 **作者**: Ajay Hao
 
@@ -72,7 +72,7 @@ metadata:
 **字幕**: ✅ 官方字幕 + 自动字幕  
 **语音转录**: ✅ 支持（Plan B）  
 **Cookies**: 推荐（获取官方字幕）  
-**下载工具**: yt-dlp
+**下载工具**: yt-dlp (>=2026.03.17)
 
 #### 操作步骤
 
@@ -100,7 +100,7 @@ cat /tmp/video-summarizer-*/summary.md
 **字幕**: ✅ 自动字幕（多语言）  
 **语音转录**: ✅ 支持（Plan B）  
 **Cookies**: ❌ 不需要  
-**下载工具**: yt-dlp
+**下载工具**: yt-dlp (>=2026.03.17)
 
 #### 操作步骤
 
@@ -124,7 +124,7 @@ cat /tmp/video-summarizer-*/summary.md
 **字幕**: ❌ 无字幕  
 **语音转录**: ✅ 唯一方式（Plan B）  
 **Cookies**: ❌ 不需要  
-**下载工具**: yt-dlp
+**下载工具**: yt-dlp (>=2026.03.17)
 
 #### 操作步骤
 
@@ -285,7 +285,7 @@ Step 9: Notion 推送 (可选)
 | 编排层 | Bash (video-summarize.sh) |
 | 分析层 | Python + DashScope API (qwen3.5-plus) |
 | 转录层 | Faster-Whisper (本地) / Groq API / 硅基流动 |
-| 工具层 | yt-dlp, ffmpeg, oss2, requests |
+| 工具层 | yt-dlp (>=2026.03.17), ffmpeg (>=6.1), oss2, requests |
 
 ### 数据文件
 
@@ -460,7 +460,7 @@ cat /tmp/output/error.log
 | 标签默认值 | 标签提取失败 | 检查标题 hashtag 格式 `#标签` |
 | 转录失败 | 无 GPU/API 配额 | 检查 `GROQ_API_KEY` |
 | Notion 推送失败 | API Key 过期 | 更新 `NOTION_API_KEY` |
-| 并行任务失败 | 依赖缺失 | 检查 `ffmpeg` / `yt-dlp` 安装 |
+| 并行任务失败 | 依赖缺失 | 检查 `ffmpeg` / `yt-dlp` 安装（版本要求：ffmpeg >= 6.1, yt-dlp >= 2026.03.17） |
 | 抖音下载失败 | 链接格式错误 | 使用完整 URL 或 v.douyin.com 短链 |
 
 ---

@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.0.4] - 2026-04-06
 
+### ✨ 新增功能
+
+**抖音渠道发布时间提取**:
+- 新增 `--json` 参数到 `douyin_downloader.py`，输出结构化元数据
+- 从抖音 API 响应中提取 `create_time` 时间戳
+- 自动转换为 `upload_date` (YYYYMMDD 格式)
+- 支持 `modal_id` 格式的视频链接（课程/精选视频）
+
+**小红书渠道发布时间提取**:
+- 从笔记 ID 前 8 位 hex 解析时间戳
+- 自动转换为 `upload_date` (YYYYMMDD 格式)
+- 兼容短链和完整链接格式
+
 ### 🐛 Bug 修复
 
 **小红书/YouTube 视频下载失败处理**:
@@ -17,19 +30,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 截图步骤支持封面图降级方案（无视频时使用封面图代替）
 - 优化错误日志输出，便于排查问题
 
+**小红书视频下载容错增强**:
+- 新增两级下载策略，兼容不同视频格式类型
+  - 策略 1：优先尝试分片格式（适用于 B 站/YouTube/部分小红书视频）
+  - 策略 2：分片格式失败后自动降级到单文件格式（适用于小红书单流媒体）
+- 解决小红书部分视频 `Requested format is not available` 错误
+- 每级策略最多重试 3 次，确保下载稳定性
+
+**小红书 Author 信息未写入 Notion**:
+- 修复 `metadata.get('uploader', '')` 无法处理 `None` 的问题
+- 改用 `metadata.get('uploader') or metadata.get('uploader_id', '')`
+- 16 进制 ID 自动转换为 "小红书用户"
+
+**抖音元数据解析编码问题**:
+- 改用 JSON 解析抖音元数据（避免 bash 解析中文编码问题）
+- 正确提取 `video_id`、`upload_date`、`uploader_id` 等字段
+- 支持多种抖音链接格式（`/video/`、`?modal_id=`、短链）
+
 ### 📝 文档更新
 
-- 版本号统一更新为 1.0.4
+**依赖版本要求补充**:
+- ffmpeg: 最低版本 >= 6.1
+- yt-dlp: 最低版本 >= 2026.03.17
+- 更新 SKILL.md、README.md、故障排查表格
+
+**版本号统一**:
+- 所有脚本、文档、配置文件统一为 v1.0.4
 - 发布日期更新为 2026-04-06
+
+### 📊 变更统计
+
+- 修改文件：8 个
+- 新增代码：+124 行
+- 删除代码：-21 行
 
 ### ✅ 核心平台（4 个）
 
-- Bilibili（B 站）
-- YouTube
-- 小红书
-- 抖音
-
----
+- **Bilibili（B 站）** - 完整支持
+- **YouTube** - 完整支持
+- **小红书** - 基本支持（语音转录）
+- **抖音** - 完整支持（专用下载器）
 
 ## [1.0.3] - 2026-04-06
 
