@@ -5,7 +5,9 @@
 set -e
 
 COOKIE_FILE="${1:-$HOME/.cookies/bilibili_cookies.txt}"
-BILIUP_COOKIE="$HOME/.config/biliup/cookies.json"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# biliup login 默认在当前工作目录保存 cookies.json
+BILIUP_COOKIE="$SCRIPT_DIR/cookies.json"
 
 echo "================================"
 echo "📱 B 站扫码登录"
@@ -23,7 +25,9 @@ fi
 
 # 创建目录
 mkdir -p "$(dirname "$COOKIE_FILE")"
-mkdir -p "$(dirname "$BILIUP_COOKIE")"
+
+# 进入脚本目录执行，确保 cookies.json 保存在正确位置
+cd "$SCRIPT_DIR"
 
 # 执行扫码登录
 echo "请使用 B 站 APP 扫码："
@@ -34,6 +38,7 @@ biliup login
 if [[ ! -f "$BILIUP_COOKIE" ]]; then
     echo ""
     echo "❌ 登录失败，未找到 cookies.json"
+    echo "   预期路径：$BILIUP_COOKIE"
     exit 1
 fi
 
@@ -42,7 +47,6 @@ echo "✅ 登录成功"
 echo ""
 
 # 转换格式
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 echo "🔄 转换 Cookies 格式..."
 python3 "$SCRIPT_DIR/convert-bili-cookie.py" "$BILIUP_COOKIE" "$COOKIE_FILE"
 

@@ -17,11 +17,27 @@ def convert_cookie(json_file: str, output_file: str):
     with open(json_file, 'r', encoding='utf-8') as f:
         data = json.load(f)
     
-    # 提取 Cookies
-    cookies = data.get('cookie', {})
-    if not cookies:
-        # 兼容旧版本格式
-        cookies = data
+    # 提取 Cookies（支持多种格式）
+    cookies_dict = {}
+    
+    # 格式 1: cookie_info.cookies 数组（biliup 新格式）
+    cookie_info = data.get('cookie_info', {})
+    if cookie_info and 'cookies' in cookie_info:
+        for cookie in cookie_info['cookies']:
+            name = cookie.get('name', '')
+            value = cookie.get('value', '')
+            if name and value:
+                cookies_dict[name] = value
+    
+    # 格式 2: cookie 对象（旧格式）
+    if not cookies_dict and 'cookie' in data:
+        cookies_dict = data.get('cookie', {})
+    
+    # 格式 3: 直接就是 cookie 字典（兼容模式）
+    if not cookies_dict:
+        cookies_dict = data
+    
+    cookies = cookies_dict
     
     # Netscape Cookie 格式
     # domain  flag  path  secure  expiration  name  value
@@ -30,11 +46,21 @@ def convert_cookie(json_file: str, output_file: str):
     # B 站主要 Cookie 字段
     fields = ['SESSDATA', 'bili_jct', 'buvid3', 'DedeUserID', 'DedeUserID__ckMd5', 'sid', 'aclu', 'blackside', 'current_theme', 'fingerprint', 'buvid_fp', 'buvid4', 'home_feed_column', 'PVID', 'enable_web_push', 'CURRENT_FNVAL', 'CURRENT_QUALITY', 'bp_video_offset', 'video_guid', 'bp_article_offset', 'b_nut', 'b_lsid', 'rpdid']
     
-    expire_time = int(time.time()) + 7776000  # 90 天后过期
+    # 尝试从原始数据获取过期时间（biliup 新格式）
+    cookie_info = data.get('cookie_info', {})
+    cookie_list = cookie_info.get('cookies', [])
+    expires_map = {}
+    for cookie in cookie_list:
+        name = cookie.get('name', '')
+        expires = cookie.get('expires', 0)
+        if name and expires:
+            expires_map[name] = expires
     
     for field in fields:
         value = cookies.get(field, '')
         if value:
+            # 使用原始过期时间，如果没有则使用默认值（90 天后）
+            expire_time = expires_map.get(field, int(time.time()) + 7776000)
             # Netscape 格式
             line = f".bilibili.com\tTRUE\t/\tTRUE\t{expire_time}\t{field}\t{value}"
             lines.append(line)

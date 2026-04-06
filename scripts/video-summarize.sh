@@ -1,5 +1,5 @@
 #!/bin/bash
-# video-summarize.sh - 视频总结生成完整流程 v1.0.6
+# video-summarize.sh - 视频总结生成完整流程 v1.0.7
 # 用法：./video-summarize.sh <视频 URL> [输出目录] [cookies 文件] [选项]
 
 set -e
@@ -253,7 +253,7 @@ check_progress() {
     return 1
 }
 
-echo "🎬 Video Summarizer v1.0.6"
+echo "🎬 Video Summarizer v1.0.7"
 echo ""
 
 # Step 1: 元数据
@@ -301,14 +301,26 @@ METAEOF
             echo "✅ 元数据完成 | 标题：$TITLE | 视频 ID: $VIDEO_ID"
         else
             log_warn "抖音下载脚本不存在，使用 yt-dlp"
-            yt-dlp --dump-json "$VIDEO_URL" > "$OUTPUT_DIR/metadata.json" 2>/dev/null || echo '{}' > "$OUTPUT_DIR/metadata.json"
+            if [[ -f "$COOKIES_FILE" ]]; then
+                yt-dlp --cookies "$COOKIES_FILE" --dump-json "$VIDEO_URL" > "$OUTPUT_DIR/metadata.json" 2>/dev/null || echo '{}' > "$OUTPUT_DIR/metadata.json"
+            else
+                yt-dlp --dump-json "$VIDEO_URL" > "$OUTPUT_DIR/metadata.json" 2>/dev/null || echo '{}' > "$OUTPUT_DIR/metadata.json"
+            fi
         fi
     else
         # 非抖音平台：使用 yt-dlp
-        if [[ "$VERBOSE" == "true" ]]; then
-            yt-dlp --dump-json "$VIDEO_URL" > "$OUTPUT_DIR/metadata.json"
+        if [[ -f "$COOKIES_FILE" ]]; then
+            if [[ "$VERBOSE" == "true" ]]; then
+                yt-dlp --cookies "$COOKIES_FILE" --dump-json "$VIDEO_URL" > "$OUTPUT_DIR/metadata.json"
+            else
+                yt-dlp --cookies "$COOKIES_FILE" --dump-json "$VIDEO_URL" > "$OUTPUT_DIR/metadata.json" 2>/dev/null
+            fi
         else
-            yt-dlp --dump-json "$VIDEO_URL" > "$OUTPUT_DIR/metadata.json" 2>/dev/null
+            if [[ "$VERBOSE" == "true" ]]; then
+                yt-dlp --dump-json "$VIDEO_URL" > "$OUTPUT_DIR/metadata.json"
+            else
+                yt-dlp --dump-json "$VIDEO_URL" > "$OUTPUT_DIR/metadata.json" 2>/dev/null
+            fi
         fi
         
         # 为小红书提取 upload_date（从笔记 ID 解析）
@@ -416,16 +428,22 @@ else
         
         # 非抖音平台或抖音下载失败
         if [[ "$DOWNLOAD_SUCCESS" != "true" ]]; then
+            # 构建 Cookies 参数（如果有）
+            COOKIE_ARG=""
+            if [[ -n "$COOKIES_FILE" && -f "$COOKIES_FILE" ]]; then
+                COOKIE_ARG="--cookies $COOKIES_FILE"
+            fi
+            
             for i in 1 2 3; do
                 log_info "[视频任务] 尝试 $i/3..."
                 if [[ "$VERBOSE" == "true" ]]; then
-                    yt-dlp -f "bestvideo[height<=720]+bestaudio/best[height<=720]" \
+                    yt-dlp $COOKIE_ARG -f "bestvideo[height<=720]+bestaudio/best[height<=720]" \
                            --merge-output-format mp4 \
                            -o "$VIDEO_FILE" "$VIDEO_URL" 2>&1 | tee -a "$VIDEO_LOG" && { DOWNLOAD_SUCCESS=true; break; } || {
                         rm -f "$VIDEO_FILE"* 2>/dev/null
                     }
                 else
-                    yt-dlp -f "bestvideo[height<=720]+bestaudio/best[height<=720]" \
+                    yt-dlp $COOKIE_ARG -f "bestvideo[height<=720]+bestaudio/best[height<=720]" \
                            --merge-output-format mp4 \
                            -o "$VIDEO_FILE" "$VIDEO_URL" 2>/dev/null && { DOWNLOAD_SUCCESS=true; break; } || {
                         rm -f "$VIDEO_FILE"* 2>/dev/null
@@ -436,12 +454,12 @@ else
             if [[ "$DOWNLOAD_SUCCESS" != "true" ]]; then
                 log_warn "[视频任务] 降级尝试..."
                 if [[ "$VERBOSE" == "true" ]]; then
-                    yt-dlp -f "best" --merge-output-format mp4 -o "$VIDEO_FILE" "$VIDEO_URL" 2>&1 | tee -a "$VIDEO_LOG" || {
+                    yt-dlp $COOKIE_ARG -f "best" --merge-output-format mp4 -o "$VIDEO_FILE" "$VIDEO_URL" 2>&1 | tee -a "$VIDEO_LOG" || {
                         log_error "[视频任务] 视频下载失败"
                         exit 1
                     }
                 else
-                    yt-dlp -f "best" --merge-output-format mp4 -o "$VIDEO_FILE" "$VIDEO_URL" 2>/dev/null || {
+                    yt-dlp $COOKIE_ARG -f "best" --merge-output-format mp4 -o "$VIDEO_FILE" "$VIDEO_URL" 2>/dev/null || {
                         log_error "[视频任务] 视频下载失败"
                         exit 1
                     }
@@ -490,14 +508,19 @@ else
         # 尝试 2: 自动字幕
         if [[ -z "$SUBTITLE_FILE" ]]; then
             log_info "[字幕任务] 尝试下载自动字幕..."
+            # 构建 Cookies 参数（如果有）
+            SUBTITLE_COOKIE_ARG=""
+            if [[ -n "$COOKIES_FILE" && -f "$COOKIES_FILE" ]]; then
+                SUBTITLE_COOKIE_ARG="--cookies $COOKIES_FILE"
+            fi
             if [[ "$VERBOSE" == "true" ]]; then
-                yt-dlp --write-auto-sub \
+                yt-dlp $SUBTITLE_COOKIE_ARG --write-auto-sub \
                        --sub-lang "zh-Hans,zh,en" \
                        --skip-download \
                        --convert-subs vtt \
                        -o "$OUTPUT_DIR/video" "$VIDEO_URL" 2>&1 | tee -a "$SUBTITLE_LOG" || true
             else
-                yt-dlp --write-auto-sub \
+                yt-dlp $SUBTITLE_COOKIE_ARG --write-auto-sub \
                        --sub-lang "zh-Hans,zh,en" \
                        --skip-download \
                        --convert-subs vtt \
