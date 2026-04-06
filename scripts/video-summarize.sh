@@ -1,5 +1,5 @@
 #!/bin/bash
-# video-summarize.sh - 视频总结生成完整流程 v1.0.4
+# video-summarize.sh - 视频总结生成完整流程 v1.0.5
 # 用法：./video-summarize.sh <视频 URL> [输出目录] [cookies 文件] [选项]
 
 set -e
@@ -253,7 +253,7 @@ check_progress() {
     return 1
 }
 
-echo "🎬 Video Summarizer v1.0.4"
+echo "🎬 Video Summarizer v1.0.5"
 echo ""
 
 # Step 1: 元数据
