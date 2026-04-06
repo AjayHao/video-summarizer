@@ -46,11 +46,23 @@ def time_to_seconds(time_str: str) -> int:
 
 
 def parse_vtt(vtt_file):
-    """解析 VTT 字幕文件，返回带时间戳的字幕列表"""
+    """解析 VTT 字幕文件或纯文本文件，返回带时间戳的字幕列表"""
     subtitles = []
     
     with open(vtt_file, 'r', encoding='utf-8') as f:
         content = f.read()
+    
+    # 检查是否为纯文本格式（没有 WEBVTT 头部和时间戳）
+    if not content.startswith('WEBVTT') and '-->' not in content:
+        # 纯文本格式：整个文件作为一条字幕
+        content = content.strip()
+        if content:
+            subtitles.append({
+                'start': 0,
+                'end': 0,
+                'text': content
+            })
+        return subtitles
     
     # 移除 WEBVTT 头部
     content = re.sub(r'^WEBVTT.*?\n\n', '', content, flags=re.DOTALL)

@@ -273,9 +273,9 @@ else
             # 获取视频信息（JSON 格式，便于解析）
             VIDEO_JSON=$(python3 "$DOUYIN_SCRIPT" --link "$VIDEO_URL" --action info --json 2>/dev/null)
             
-            # 使用 Python 解析 JSON
+            # 使用 Python 解析 JSON（标题清理换行符和特殊字符）
             VIDEO_ID=$(echo "$VIDEO_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('video_id',''))")
-            TITLE=$(echo "$VIDEO_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('title',''))")
+            TITLE=$(echo "$VIDEO_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); t=d.get('title',''); print(t.replace('\n',' ').replace('\r','').strip())")
             AUTHOR=$(echo "$VIDEO_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('author',''))")
             DURATION_STR=$(echo "$VIDEO_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('duration_string',''))")
             COVER_URL=$(echo "$VIDEO_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('cover',''))")
