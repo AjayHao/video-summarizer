@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.6] - 2026-04-06
+
+### 🐛 Bug 修复
+
+**AI 分析纯文本格式支持**:
+- 修复 `analyze-subtitles-ai.py` 的 `parse_vtt()` 函数
+- 增加纯文本格式检测（无 WEBVTT 头部和时间戳）
+- 支持 Plan B 语音转录生成的 `audio.txt` 文件
+- 用户反馈：AI 分析报错"找到 0 条字幕"
+
+**抖音元数据 JSON 格式错误**:
+- 修复 `video-summarize.sh` 中抖音标题提取
+- 清理标题中的换行符和回车符
+- 避免 JSON 解析失败（invalid control character）
+- 用户反馈：脚本执行失败（退出码：1）
+
+### 📊 变更统计
+
+- 修改文件：2 个
+- 新增代码：+15 行
+- 删除代码：-3 行
+
+### ✅ 核心平台（4 个）
+
+- **Bilibili（B 站）** - 完整支持
+- **YouTube** - 完整支持
+- **小红书** - 基本支持（语音转录）
+- **抖音** - 完整支持（专用下载器，无需 cookies）
+
+### 🧪 测试验证
+
+**抖音视频测试**:
+- 视频：https://www.douyin.com/video/7601482272836041670
+- 标题：2026 年 AI 大模型权威排名及详细解析
+- ✅ 视频下载成功（17M）
+- ✅ 语音转录成功（3005 字符）
+- ✅ AI 分析成功（生成 JSON）
+- ✅ 截图生成（11 张）
+- ✅ Notion 推送成功
+
 ## [1.0.5] - 2026-04-06
 
 ### 🐛 Bug 修复
