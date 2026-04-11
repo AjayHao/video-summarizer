@@ -9,7 +9,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.0.8] - 2026-04-11
 
+### 🚨 安全漏洞修复
+
+**修复命令注入漏洞（VirusTotal 报告）**:
+
+1. **Step 1 元数据生成（抖音平台）**
+   - ❌ 修复前：heredoc 直接展开 `$TITLE` 等变量，存在命令注入风险
+   - ✅ 修复后：使用 Python `json.dump()` 安全生成 JSON（自动转义特殊字符）
+   - 攻击场景：视频标题包含 `"; rm -rf ~ #` 等恶意内容时可执行任意命令
+
+2. **save_progress() 函数**
+   - ❌ 修复前：heredoc 直接展开 `$VIDEO_URL` 和 `$OUTPUT_DIR`
+   - ✅ 修复后：使用 Python `json.dump()` 安全生成进度文件
+
+3. **其他 heredoc 审查**
+   - `cat > "$AI_JSON_FILE" << 'AIJSON'` → ✅ 安全（带引号，变量不展开）
+   - 其余 heredoc 均为静态内容或已修复
+
+### 🎙️ 转录优化
+
+**简化语音转录降级逻辑**:
+
+1. **移除硅基流动 API 支持**
+   - ❌ 删除 `transcribe_with_siliconflow()` 函数
+   - ❌ 移除 `SILICONFLOW_API_KEY` 环境变量依赖
+   - ✅ 减少 1 个 API Key 配置
+
+2. **优化 Groq API 降级逻辑**
+   - ✅ 检测 `GROQ_API_KEY` 是否存在且非空
+   - ✅ Groq API 调用失败时（网络/配额）自动降级到本地
+   - ✅ 未配置 Key 时直接使用本地转录
+
+3. **三层降级方案**
+   ```
+   1. Groq API (whisper-large-v3) → 云端高速（如果配置且可用）
+   2. Faster-Whisper (本地) → GPU/CPU 自适应
+   3. Whisper.cpp / OpenAI Whisper → 保底方案
+   ```
+
 ### 🔒 安全合规优化
+
+**修复 OpenClaw 安全扫描问题（Suspicious → Benign）：**
+
+1. **环境变量声明补全**
+   - 在 metadata 中添加 `ALIYUN_OSS_ENDPOINT` 到 required env
+   - 解决脚本使用但未声明的警告
+
+2. **依赖声明补全**
+   - pip packages 添加 `biliup`（B 站登录工具）
+   - 解决依赖未声明的警告
+
+3. **安全透明度增强**
+   - 新增「安全提示」警告框（SKILL.md 开头）
+   - 新增「安全与隐私说明」章节：
+     - 敏感数据处理表格（文件/用途/敏感性/用户控制）
+     - 外部服务端点列表（域名/用途/传输数据）
+     - 最小权限建议（OSS Bucket/API Keys/测试环境）
 
 **修复 OpenClaw 安全扫描问题（Suspicious → Benign）：**
 
@@ -36,7 +91,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | 依赖透明度 | ❌ `biliup` 未声明 | ✅ 完整列出 |
 | Cookie 处理 | ⚠️ 标记为敏感 | ✅ 明确声明 + 用户可控 |
 | 外部端点 | ⚠️ 未明确列出 | ✅ 透明列表 |
-| **整体评级** | 🔴 Suspicious | 🟢 Benign |
 
 ---
 

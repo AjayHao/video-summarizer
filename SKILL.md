@@ -89,8 +89,7 @@ metadata:
 |------|------|------|----------|
 | DashScope | `dashscope.aliyuncs.com` | AI 分析 | 字幕文本、元数据 |
 | 阿里云 OSS | `oss-cn-shanghai.aliyuncs.com` | 图床上传 | 截图、封面图 |
-| 硅基流动 | `siliconflow.cn` | 备用转录 | 音频片段 |
-| Groq | `api.groq.com` | 备用转录 | 音频片段 |
+| Groq | `api.groq.com` | 备用转录（可选） | 音频片段 |
 | Bilibili | `bilibili.com` | 视频下载/字幕 | 无（仅下载） |
 | YouTube | `youtube.com` | 视频下载/字幕 | 无（仅下载） |
 
@@ -226,11 +225,9 @@ DASHSCOPE_API_KEY=sk-xxxxxxxxxxxxxxxx
 NOTION_API_KEY=nop_xxxxxxxxxxxxxxxx
 NOTION_VIDEO_SUMMARY_DATABASE_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 
-# 语音转录加速（无 GPU 时推荐）
+# 语音转录加速（Groq API，国内需代理）
+# 如未配置或网络不可达，自动降级到本地 Faster-Whisper
 GROQ_API_KEY=gsk_xxxxxxxxxxxxxxxx
-
-# 硅基流动（备用转录）
-SILICONFLOW_API_KEY=sk-xxxxxxxxxxxxxxxx
 
 # 本地 Whisper 模型（有 GPU 时自动检测）
 WHISPER_MODEL=base  # tiny/base/small/medium/large
@@ -385,20 +382,20 @@ Step 9: Notion 推送 (可选)
 | **小红书** | ❌ 无 | ✅ 唯一 | Plan B |
 | **抖音** | ❌ 无 | ✅ 唯一 | Plan B |
 
-### Plan B 四层降级方案
+### Plan B 三层降级方案
 
 ```
-1. Faster-Whisper (本地) → GPU/CPU 自适应
+1. Groq API (whisper-large-v3) → 云端高速（如果配置且网络可达）
+   └─ 失败/未配置 → 降级到本地
+
+2. Faster-Whisper (本地) → GPU/CPU 自适应
    ├─ GPU ≥8GB  → large-v2 模型
    ├─ GPU ≥4GB  → medium 模型
    ├─ GPU ≥2GB  → small 模型
    └─ 无 GPU    → base 模型 (CPU)
+   └─ 失败 → 降级到保底
 
-2. Groq API (whisper-large-v3) → 云端高速
-
-3. 硅基流动 (FunAudioLLM/SenseVoiceSmall) → 备选云端
-
-4. Whisper.cpp / OpenAI Whisper → 保底方案
+3. Whisper.cpp / OpenAI Whisper → 保底方案
 ```
 
 ---

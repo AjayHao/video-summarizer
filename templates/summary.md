@@ -60,5 +60,5 @@
 ---
 
 *生成时间：{生成日期}*
-*技能版本：video-summarizer v1.0.7*
+*技能版本：video-summarizer v1.0.9*
 *维护人：Ajay Hao*

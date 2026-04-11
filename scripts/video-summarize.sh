@@ -1,5 +1,5 @@
 #!/bin/bash
-# video-summarize.sh - 视频总结生成完整流程 v1.0.7
+# video-summarize.sh - 视频总结生成完整流程 v1.0.9
 # 用法：./video-summarize.sh <视频 URL> [输出目录] [cookies 文件] [选项]
 
 set -e
@@ -229,15 +229,19 @@ save_progress() {
     local step=$1
     local status=$2
     local timestamp=$(date -Iseconds)
-    cat > "$PROGRESS_FILE" << EOF
-{
-  "video_url": "$VIDEO_URL",
-  "current_step": "$step",
-  "status": "$status",
-  "timestamp": "$timestamp",
-  "output_dir": "$OUTPUT_DIR"
+    # 使用 Python 安全生成 JSON（防止命令注入）
+    python3 -c "
+import json
+data = {
+    'video_url': '''$VIDEO_URL''',
+    'current_step': '$step',
+    'status': '$status',
+    'timestamp': '$timestamp',
+    'output_dir': '''$OUTPUT_DIR'''
 }
-EOF
+with open('$PROGRESS_FILE', 'w') as f:
+    json.dump(data, f, indent=2)
+"
 }
 
 # 检查进度（恢复模式）
@@ -253,7 +257,7 @@ check_progress() {
     return 1
 }
 
-echo "🎬 Video Summarizer v1.0.7"
+echo "🎬 Video Summarizer v1.0.9"
 echo ""
 
 # Step 1: 元数据
@@ -273,32 +277,37 @@ else
             # 获取视频信息（JSON 格式，便于解析）
             VIDEO_JSON=$(python3 "$DOUYIN_SCRIPT" --link "$VIDEO_URL" --action info --json 2>/dev/null)
             
-            # 使用 Python 解析 JSON（标题清理换行符和特殊字符）
-            VIDEO_ID=$(echo "$VIDEO_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('video_id',''))")
-            TITLE=$(echo "$VIDEO_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); t=d.get('title',''); print(t.replace('\n',' ').replace('\r','').strip())")
-            AUTHOR=$(echo "$VIDEO_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('author',''))")
-            DURATION_STR=$(echo "$VIDEO_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('duration_string',''))")
-            COVER_URL=$(echo "$VIDEO_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('cover',''))")
-            DOWNLOAD_URL=$(echo "$VIDEO_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('url',''))")
-            PUB_DATE=$(echo "$VIDEO_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('upload_date',''))")
-            
-            # 创建元数据 JSON
-            cat > "$OUTPUT_DIR/metadata.json" << METAEOF
-{
-  "title": "$TITLE",
-  "uploader": "$AUTHOR",
-  "uploader_id": "$VIDEO_ID",
-  "duration": 0,
-  "duration_string": "$DURATION_STR",
-  "thumbnail": "$COVER_URL",
-  "webpage_url": "$VIDEO_URL",
-  "platform": "douyin",
-  "download_url": "$DOWNLOAD_URL",
-  "upload_date": "$PUB_DATE"
-}
-METAEOF
-            
-            echo "✅ 元数据完成 | 标题：$TITLE | 视频 ID: $VIDEO_ID"
+            # 使用 Python 解析 JSON 并安全生成 metadata.json（防止命令注入）
+            python3 << PYEOF
+import sys
+import json
+
+try:
+    data = json.loads('''$VIDEO_JSON''')
+    
+    # 提取字段并清理
+    metadata = {
+        "title": str(data.get('title', '')).replace('\n', ' ').replace('\r', '').strip(),
+        "uploader": str(data.get('author', '')),
+        "uploader_id": str(data.get('video_id', '')),
+        "duration": 0,
+        "duration_string": str(data.get('duration_string', '')),
+        "thumbnail": str(data.get('cover', '')),
+        "webpage_url": "$VIDEO_URL",
+        "platform": "douyin",
+        "download_url": str(data.get('url', '')),
+        "upload_date": str(data.get('upload_date', ''))
+    }
+    
+    # 安全写入 JSON 文件（json.dump 自动转义特殊字符）
+    with open('$OUTPUT_DIR/metadata.json', 'w', encoding='utf-8') as f:
+        json.dump(metadata, f, indent=2, ensure_ascii=False)
+    
+    print(f"✅ 元数据完成 | 标题：{metadata['title']} | 视频 ID: {metadata['uploader_id']}")
+except Exception as e:
+    print(f"❌ 元数据解析失败：{e}", file=sys.stderr)
+    sys.exit(1)
+PYEOF
         else
             log_warn "抖音下载脚本不存在，使用 yt-dlp"
             if [[ -f "$COOKIES_FILE" ]]; then

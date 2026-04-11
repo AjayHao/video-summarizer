@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """
 transcribe-audio.py - Plan B: 语音转录字幕
-四层降级方案（云端优先，本地降级）：
-1. Groq API (whisper-large-v3) - 首选，高质量
-2. 硅基流动 API (FunAudioLLM/SenseVoiceSmall) - Groq 失败备选
-3. Faster-Whisper (CPU/GPU 自适应) - 云端失败后本地方案
-4. Whisper.cpp / OpenAI Whisper - 保底方案
+三层降级方案（云端优先，本地降级）：
+1. Groq API (whisper-large-v3) - 如果配置且可用
+2. Faster-Whisper (CPU/GPU 自适应) - Groq 不可用时本地方案
+3. Whisper.cpp / OpenAI Whisper - 保底方案
 
 用法：python3 transcribe-audio.py <音频文件> [输出字幕文件]
+
+版本：v1.0.8
 """
 
 import sys
@@ -21,7 +22,6 @@ load_dotenv(Path.home() / '.openclaw' / '.env')
 
 # 配置
 GROQ_API_KEY = os.getenv('GROQ_API_KEY')
-SILICONFLOW_API_KEY = os.getenv('SILICONFLOW_API_KEY') or os.getenv('API_KEY')
 WHISPER_MODEL = os.getenv('WHISPER_MODEL', 'base')  # faster-whisper 模型：tiny/base/small/medium/large
 WHISPER_CPP_MODEL = os.getenv('WHISPER_CPP_MODEL', 'base')
 FORCE_LOCAL = os.getenv('USE_LOCAL_WHISPER', 'false').lower() == 'true'
@@ -62,7 +62,7 @@ def select_faster_whisper_model(vram_gb: float):
 
 
 def transcribe_with_faster_whisper(audio_file: str) -> dict:
-    """使用 Faster-Whisper 转录（第一方案）"""
+    """使用 Faster-Whisper 转录（第二方案）"""
     try:
         from faster_whisper import WhisperModel
         
@@ -122,7 +122,7 @@ def transcribe_with_faster_whisper(audio_file: str) -> dict:
 
 
 def transcribe_with_groq(audio_file: str) -> dict:
-    """使用 Groq API 转录（第二方案）"""
+    """使用 Groq API 转录（第一方案）"""
     import requests
     
     print("   🌐 使用 Groq API 转录...")
@@ -149,36 +149,7 @@ def transcribe_with_groq(audio_file: str) -> dict:
         }
 
 
-def transcribe_with_siliconflow(audio_file: str) -> dict:
-    """使用硅基流动 API 转录（第三方案）"""
-    import requests
-    
-    print("   🌐 使用硅基流动 API 转录 (SenseVoiceSmall)...")
-    
-    api_url = "https://api.siliconflow.cn/v1/audio/transcriptions"
-    headers = {"Authorization": f"Bearer {SILICONFLOW_API_KEY}"}
-    
-    with open(audio_file, 'rb') as f:
-        files = {'file': f}
-        data = {
-            'model': 'FunAudioLLM/SenseVoiceSmall',
-            'response_format': 'verbose_json',
-            'language': 'zh'
-        }
-        response = requests.post(api_url, headers=headers, files=files, data=data, timeout=600)
-    
-    if response.status_code == 200:
-        result = response.json()
-        return {
-            'success': True,
-            'text': result.get('text', ''),
-            'segments': result.get('segments', [])
-        }
-    else:
-        return {
-            'success': False,
-            'error': f"硅基流动 API 错误：{response.status_code} - {response.text[:200]}"
-        }
+
 
 
 def transcribe_with_whisper_cpp(audio_file: str) -> dict:
@@ -264,7 +235,7 @@ def main():
         sys.exit(1)
     
     print("=" * 60)
-    print("🎤 语音转录 (Plan B) - 四层降级方案")
+    print("🎤 语音转录 (Plan B) - 三层降级方案")
     print("=" * 60)
     print()
     
@@ -276,42 +247,36 @@ def main():
         print("📊 GPU: 未检测到 (使用 CPU)")
     print()
     
-    # 四层降级逻辑（新优先级：云端 API 优先，本地降级）
+    # 三层降级逻辑：Groq API → Faster-Whisper → Whisper.cpp
     result = {'success': False, 'error': '未尝试'}
     
-    # 方案 1: Groq API (首选，高质量)
-    if GROQ_API_KEY:
-        print("【方案 1/4】Groq API (whisper-large-v3)")
+    # 方案 1: Groq API (如果配置了 Key)
+    if GROQ_API_KEY and GROQ_API_KEY.strip():
+        print("【方案 1/3】Groq API (whisper-large-v3)")
         result = transcribe_with_groq(audio_file)
         
         if result['success']:
             print("   ✅ 成功")
         else:
             print(f"   ❌ 失败：{result['error']}")
+            print("   → 降级到本地 Faster-Whisper")
+    else:
+        print("⚠️  未配置 GROQ_API_KEY，跳过 Groq API")
     
-    # 方案 2: 硅基流动 API (Groq 失败备选)
-    if not result['success'] and SILICONFLOW_API_KEY:
-        print("\n【方案 2/4】硅基流动 API (SenseVoiceSmall)")
-        result = transcribe_with_siliconflow(audio_file)
-        
-        if result['success']:
-            print("   ✅ 成功")
-        else:
-            print(f"   ❌ 失败：{result['error']}")
-    
-    # 方案 3: Faster-Whisper (本地，云端失败后使用)
+    # 方案 2: Faster-Whisper (本地，Groq 不可用时使用)
     if not result['success']:
-        print("\n【方案 3/4】Faster-Whisper (本地)")
+        print("\n【方案 2/3】Faster-Whisper (本地)")
         result = transcribe_with_faster_whisper(audio_file)
         
         if result['success']:
             print(f"   ✅ 成功 | 模型：{result.get('model', 'unknown')}")
         else:
             print(f"   ❌ 失败：{result['error']}")
+            print("   → 降级到 Whisper.cpp 保底")
     
-    # 方案 4: Whisper.cpp / OpenAI Whisper (保底)
+    # 方案 3: Whisper.cpp / OpenAI Whisper (保底)
     if not result['success']:
-        print("\n【方案 4/4】Whisper 本地保底")
+        print("\n【方案 3/3】Whisper 本地保底")
         result = transcribe_with_whisper_cpp(audio_file)
         
         if result['success']:
