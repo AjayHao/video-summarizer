@@ -6,7 +6,7 @@ metadata:
     "openclaw":
       {
         "emoji": "🎬",
-        "requires": { "bins": ["ffmpeg (>=6.1)", "yt-dlp (>=2026.03.17)"], "env": ["DASHSCOPE_API_KEY", "ALIYUN_OSS_AK", "ALIYUN_OSS_SK", "ALIYUN_OSS_BUCKET_ID"] },
+        "requires": { "bins": ["ffmpeg (>=6.1)", "yt-dlp (>=2026.03.17)"], "env": ["DASHSCOPE_API_KEY", "ALIYUN_OSS_AK", "ALIYUN_OSS_SK", "ALIYUN_OSS_BUCKET_ID", "ALIYUN_OSS_ENDPOINT"] },
         "install":
           [
             {
@@ -26,7 +26,7 @@ metadata:
             {
               "id": "pip",
               "kind": "pip",
-              "packages": "requests oss2 python-dotenv",
+              "packages": "requests oss2 python-dotenv biliup",
               "label": "Install Python dependencies",
             },
           ],
@@ -38,10 +38,18 @@ metadata:
 
 将 B 站/YouTube/小红书/抖音视频转换为结构化 Notion 总结文档，自动上传截图，一键推送 Notion。
 
-**版本**: 1.0.7  
-**发布**: 2026-04-06  
+**版本**: 1.0.8  
+**发布**: 2026-04-11  
 **许可**: MIT  
 **作者**: Ajay Hao
+
+---
+
+> ⚠️ **安全提示**
+> - 本技能会将视频内容发送至第三方 AI 服务进行分析
+> - 建议使用专用 API Key（非生产环境）
+> - OSS Bucket 请配置最小权限（仅写入/读取）
+> - B 站 Cookies 仅在你控制的设备上使用
 
 ---
 
@@ -62,6 +70,35 @@ metadata:
 - **GPU 自适应**: 自动检测显存，选择最优 Whisper 模型
 - **断点续跑**: 支持从中断点恢复，避免重复处理
 - **四层标签**: 标题 hashtag → 元数据 → AI 关键词 → 默认值
+
+---
+
+## 🔐 安全与隐私说明
+
+### 敏感数据处理
+
+| 文件/路径 | 用途 | 敏感性 | 用户控制 |
+|-----------|------|--------|----------|
+| `~/.cookies/bilibili_cookies.txt` | B 站官方字幕获取 | 高（Session Token） | 用户主动扫码生成，可随时删除 |
+| `~/.openclaw/.env` | API Keys 存储 | 高 | 用户自行配置，skill 不修改 |
+| `/tmp/video-summarizer-*/` | 临时输出 | 低 | 处理完成后可手动清理 |
+
+### 外部服务端点
+
+| 服务 | 域名 | 用途 | 传输数据 |
+|------|------|------|----------|
+| DashScope | `dashscope.aliyuncs.com` | AI 分析 | 字幕文本、元数据 |
+| 阿里云 OSS | `oss-cn-shanghai.aliyuncs.com` | 图床上传 | 截图、封面图 |
+| 硅基流动 | `siliconflow.cn` | 备用转录 | 音频片段 |
+| Groq | `api.groq.com` | 备用转录 | 音频片段 |
+| Bilibili | `bilibili.com` | 视频下载/字幕 | 无（仅下载） |
+| YouTube | `youtube.com` | 视频下载/字幕 | 无（仅下载） |
+
+### 最小权限建议
+
+- **OSS Bucket**: 创建专用 Bucket，仅授予 PutObject/GetObject 权限
+- **API Keys**: 使用子账号 Key，设置 IP 白名单
+- **测试环境**: 首次使用建议在隔离环境测试
 
 ---
 
