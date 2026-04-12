@@ -1,5 +1,6 @@
 #!/bin/bash
 # video-summarize.sh - 视频总结生成完整流程 v1.0.9
+# 更新日期：2026-04-12
 # 用法：./video-summarize.sh <视频 URL> [输出目录] [cookies 文件] [选项]
 
 set -e
@@ -853,7 +854,7 @@ if [[ -f "$OSS_SCRIPT" ]]; then
     COVER_FILE="$OUTPUT_DIR/cover_url.txt"
     echo "🖼️  上传封面图..." >> "$OSS_LOG_FILE"
     python3 "$OSS_SCRIPT" thumbnail "$OUTPUT_DIR/metadata.json" \
-        --public --format json >> "$COVER_FILE" 2>> "$OSS_LOG_FILE"
+        --public --format json > "$COVER_FILE" 2>> "$OSS_LOG_FILE"
     
     if [[ -f "$COVER_FILE" ]]; then
         COVER_URL=$(python3 -c "import json; print(json.load(open('$COVER_FILE')).get('oss_url', ''))" 2>/dev/null)

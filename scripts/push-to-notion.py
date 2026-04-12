@@ -2,6 +2,8 @@
 """
 push-to-notion.py - 将视频总结推送到 Notion
 用法：python3 push-to-notion.py <summary.md> [Notion Database ID]
+
+版本：v1.0.9
 """
 
 import sys

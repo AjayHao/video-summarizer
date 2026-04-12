@@ -3,6 +3,8 @@
 阿里云 OSS 图床上传脚本
 用于 video-summarizer 技能，自动上传截图到阿里云 OSS
 
+版本：v1.0.9
+
 路径规范：
 /screenshots/<平台名>/<视频 ID>_<时间戳>/<截图文件>
 /thumbnails/<平台>/<视频 ID>/cover.jpg

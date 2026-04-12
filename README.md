@@ -2,8 +2,8 @@
 
 🎬 将 B 站/YouTube/小红书/抖音视频转换为结构化 Notion 总结
 
-**版本**: 1.0.8  
-**发布**: 2026-04-06  
+**版本**: 1.0.9  
+**发布**: 2026-04-12  
 **许可**: MIT
 
 ---
@@ -39,12 +39,13 @@ ALIYUN_OSS_ENDPOINT=oss-cn-shanghai.aliyuncs.com
 # 必需 - AI 分析
 DASHSCOPE_API_KEY=your_dashscope_api_key
 
-# 可选 - Notion 自动推送
+# 可选 - Notion 自动推送（单个数据库）
 NOTION_API_KEY=your_notion_api_key
 NOTION_VIDEO_SUMMARY_DATABASE_ID=your_database_id
 
-# 可选 - 语音转录加速（Groq API，国内需代理）
-# 如未配置或网络不可达，自动降级到本地 Faster-Whisper
+# 可选 - 语音转录加速（Groq API）
+# 国内需代理访问，未配置时自动使用本地 Faster-Whisper
+# 不配置此项不影响使用
 GROQ_API_KEY=your_groq_api_key
 ```
 

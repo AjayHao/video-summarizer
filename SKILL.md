@@ -38,8 +38,8 @@ metadata:
 
 将 B 站/YouTube/小红书/抖音视频转换为结构化 Notion 总结文档，自动上传截图，一键推送 Notion。
 
-**版本**: 1.0.8  
-**发布**: 2026-04-11  
+**版本**: 1.0.9  
+**发布**: 2026-04-12  
 **许可**: MIT  
 **作者**: Ajay Hao
 
@@ -89,9 +89,11 @@ metadata:
 |------|------|------|----------|
 | DashScope | `dashscope.aliyuncs.com` | AI 分析 | 字幕文本、元数据 |
 | 阿里云 OSS | `oss-cn-shanghai.aliyuncs.com` | 图床上传 | 截图、封面图 |
-| Groq | `api.groq.com` | 备用转录（可选） | 音频片段 |
+| Groq | `api.groq.com` | 备用转录（可选，需代理） | 音频片段 |
 | Bilibili | `bilibili.com` | 视频下载/字幕 | 无（仅下载） |
 | YouTube | `youtube.com` | 视频下载/字幕 | 无（仅下载） |
+
+**说明**: Groq API 为可选加速方案，未配置时自动降级到本地 Faster-Whisper。
 
 ### 最小权限建议
 
@@ -221,17 +223,17 @@ DASHSCOPE_API_KEY=sk-xxxxxxxxxxxxxxxx
 
 # ========== 可选配置 ==========
 
-# Notion 自动推送
+# Notion 自动推送（可选）
 NOTION_API_KEY=nop_xxxxxxxxxxxxxxxx
-NOTION_VIDEO_SUMMARY_DATABASE_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+NOTION_VIDEO_SUMMARY_DATABASE_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx  # 单个数据库 ID
 
-# 语音转录加速（Groq API，国内需代理）
-# 如未配置或网络不可达，自动降级到本地 Faster-Whisper
+# 语音转录加速（Groq API，可选）
+# 国内需代理访问，如未配置自动降级到本地 Faster-Whisper
+# 不配置此项不影响使用
 GROQ_API_KEY=gsk_xxxxxxxxxxxxxxxx
 
 # 本地 Whisper 模型（有 GPU 时自动检测）
 WHISPER_MODEL=base  # tiny/base/small/medium/large
-USE_LOCAL_WHISPER=false  # true 强制使用本地 Whisper
 ```
 
 ### OSS Bucket 要求
@@ -270,7 +272,7 @@ USE_LOCAL_WHISPER=false  # true 强制使用本地 Whisper
 4. **配置环境变量**：
    ```bash
    NOTION_API_KEY=nop_xxxxxxxxxxxxxxxx
-   NOTION_VIDEO_SUMMARY_DATABASE_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+   NOTION_VIDEO_SUMMARY_DATABASE_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx  # 单个数据库
    ```
 
 #### 数据库视图示例
@@ -318,7 +320,7 @@ Step 9: Notion 推送 (可选)
 |------|------|
 | 编排层 | Bash (video-summarize.sh) |
 | 分析层 | Python + DashScope API (qwen3.5-plus) |
-| 转录层 | Faster-Whisper (本地) / Groq API / 硅基流动 |
+| 转录层 | Groq API (可选) / Faster-Whisper (本地) |
 | 工具层 | yt-dlp (>=2026.03.17), ffmpeg (>=6.1), oss2, requests |
 
 ### 数据文件
@@ -382,21 +384,24 @@ Step 9: Notion 推送 (可选)
 | **小红书** | ❌ 无 | ✅ 唯一 | Plan B |
 | **抖音** | ❌ 无 | ✅ 唯一 | Plan B |
 
-### Plan B 三层降级方案
+### Plan B 双层降级方案
 
 ```
-1. Groq API (whisper-large-v3) → 云端高速（如果配置且网络可达）
+1. Groq API (whisper-large-v3) → 云端高速（可选，需配置 GROQ_API_KEY 且网络可达）
    └─ 失败/未配置 → 降级到本地
 
 2. Faster-Whisper (本地) → GPU/CPU 自适应
    ├─ GPU ≥8GB  → large-v2 模型
    ├─ GPU ≥4GB  → medium 模型
    ├─ GPU ≥2GB  → small 模型
+   ├─ GPU ≥1GB  → base 模型 (GPU)
    └─ 无 GPU    → base 模型 (CPU)
-   └─ 失败 → 降级到保底
-
-3. Whisper.cpp / OpenAI Whisper → 保底方案
 ```
+
+**说明**: 
+- Groq API 为可选配置，未配置时直接使用本地 Faster-Whisper
+- 本地转录无需任何 API Key，完全离线运行
+- 国内使用 Groq 需配置代理
 
 ---
 

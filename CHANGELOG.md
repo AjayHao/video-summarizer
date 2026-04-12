@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.9] - 2026-04-12
+
+### 📝 文档更新
+
+**Groq 配置说明优化**:
+- 明确标注 Groq API 为**可选配置**，非强制依赖
+- 更新文档说明：未配置 GROQ_API_KEY 时自动使用本地 Faster-Whisper
+- 移除「硅基流动」相关描述（代码已删除）
+- Plan B 降级方案从「三层」改为「双层」（Groq API → Faster-Whisper）
+
+**Notion 配置简化**:
+- 移除多数据库支持（`NOTION_VIDEO_SUMMARY_DATABASE_IDS`）
+- 仅保留单数据库配置（`NOTION_VIDEO_SUMMARY_DATABASE_ID`）
+
+### 🔧 代码优化
+
+**版本号统一**:
+- SKILL.md: 1.0.8 → 1.0.9
+- README.md: 1.0.8 → 1.0.9
+- video-summarize.sh: 1.0.8 → 1.0.9
+- transcribe-audio.py: 1.0.8 → 1.0.9
+- analyze-subtitles-ai.py: 1.0.8 → 1.0.9
+- push-to-notion.py: 1.0.8 → 1.0.9
+- prompt.json: 1.0.8 → 1.0.9
+- upload-to-oss.py: 1.0.8 → 1.0.9
+
+### 🐛 Bug 修复
+
+**cover_url.txt 写入问题**:
+- 修复封面上传结果追加写入导致解析失败的问题（`>>` → `>`）
+
+---
+
 ## [1.0.8] - 2026-04-11
 
 ### 🚨 安全漏洞修复

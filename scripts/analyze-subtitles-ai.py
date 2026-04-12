@@ -4,6 +4,8 @@ analyze-subtitles-ai.py - 使用 AI 分析字幕生成结构化总结
 基于阿里云 DashScope API (qwen3.5-plus)
 
 用法：python3 analyze-subtitles-ai.py <字幕文件> <元数据文件> <输出文件>
+
+版本：v1.0.9
 """
 
 import sys
