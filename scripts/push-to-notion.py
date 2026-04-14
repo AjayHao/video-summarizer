@@ -3,7 +3,7 @@
 push-to-notion.py - 将视频总结推送到 Notion
 用法：python3 push-to-notion.py <summary.md> [Notion Database ID]
 
-版本：v1.0.9
+版本：v1.0.10
 """
 
 import sys
@@ -22,7 +22,12 @@ NOTION_API_KEY = os.getenv('NOTION_API_KEY')
 NOTION_DATABASE_ID = os.getenv('NOTION_VIDEO_SUMMARY_DATABASE_ID')
 
 if not NOTION_API_KEY:
-    print("❌ 错误：缺少 NOTION_API_KEY，请检查 ~/.openclaw/.env")
+    print("❌ 错误：缺少 NOTION_API_KEY")
+    print("说明：Notion 推送为可选功能，仅在 --push 模式时需要")
+    print("解决方案:")
+    print("  1. 配置环境变量：在 ~/.openclaw/.env 中添加 NOTION_API_KEY")
+    print("  2. 或者不使用 --push 参数，手动处理 Markdown 文件")
+    print("  3. 获取 Notion API Key: https://www.notion.so/my-integrations")
     sys.exit(1)
 
 # Notion API 配置

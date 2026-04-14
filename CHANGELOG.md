@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.10] - 2026-04-14
+
+### 🔒 安全合规优化
+
+**移除硅基流动 API 残留代码**:
+- `douyin_downloader.py` 移除硅基流动 (siliconflow.cn) API 配置和调用
+- 改用与主流程一致的 Groq API + 本地 Faster-Whisper 降级方案
+- 更新环境变量：`API_KEY` → `GROQ_API_KEY`（与其他脚本统一）
+- 文档同步更新：SKILL.md、CHANGELOG.md 移除硅基流动相关描述
+
+**Notion 推送说明优化**:
+- `push-to-notion.py` 改进错误提示，明确说明 NOTION_API_KEY 为可选配置
+- 仅在 `--push` 模式时需要配置，非强制依赖
+- 添加获取 API Key 的官方链接
+
+**外部服务端点文档更新**:
+- SKILL.md 添加抖音域名到外部服务端点表格
+- 明确各服务的数据传输范围和用途
+
+### 📝 文档更新
+
+**抖音平台说明**:
+- 澄清 `douyin_downloader.py` 仅用于元数据获取和视频下载
+- 语音转录使用主流程的 `transcribe-audio.py`（Groq API + 本地降级）
+- 添加故障排查条目：抖音文案提取失败自动降级到本地 Faster-Whisper
+
+**环境变量说明**:
+- GROQ_API_KEY 注释说明：douyin_downloader.py 也使用此变量
+- 移除所有硅基流动 API 相关的环境变量说明
+
+---
+
 ## [1.0.9] - 2026-04-12
 
 ### 📝 文档更新

@@ -5,11 +5,11 @@
 功能:
 1. 从抖音分享链接获取无水印视频下载链接
 2. 下载视频并提取音频
-3. 使用硅基流动 API 从音频中提取文本
-4. 自动保存文案到文件 (一个视频一个文件夹)
+3. 提取文案并保存到文件 (一个视频一个文件夹)
 
-环境变量:
-- API_KEY: 硅基流动 API 密钥 (用于文案提取功能)
+注意:
+- info/download 操作无需 API 密钥
+- extract 操作需要配置 GROQ_API_KEY 或使用本地 Whisper 转录
 
 使用示例:
   # 获取下载链接 (无需 API 密钥)
@@ -18,7 +18,7 @@
   # 下载视频
   python douyin_downloader.py --link "抖音分享链接" --action download --output ./videos
 
-  # 提取文案并保存到文件 (需要 API_KEY 环境变量)
+  # 提取文案并保存到文件 (需要 GROQ_API_KEY 环境变量)
   python douyin_downloader.py --link "抖音分享链接" --action extract --output ./output
 """
 
@@ -47,8 +47,8 @@ def check_dependencies():
         missing.append("ffmpeg-python")
 
     if missing:
-        print(f"缺少依赖: {', '.join(missing)}")
-        print(f"请运行: pip install {' '.join(missing)}")
+        print(f"缺少依赖：{', '.join(missing)}")
+        print(f"请运行：pip install {' '.join(missing)}")
         sys.exit(1)
 
 
@@ -62,9 +62,9 @@ HEADERS = {
     'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) EdgiOS/121.0.2277.107 Version/17.0 Mobile/15E148 Safari/604.1'
 }
 
-# 硅基流动 API 配置
-DEFAULT_API_BASE_URL = "https://api.siliconflow.cn/v1/audio/transcriptions"
-DEFAULT_MODEL = "FunAudioLLM/SenseVoiceSmall"
+# Groq API 配置 (与 transcribe-audio.py 一致)
+DEFAULT_GROQ_API_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
+DEFAULT_MODEL = "whisper-large-v3"
 
 
 class DouyinProcessor:
@@ -72,7 +72,7 @@ class DouyinProcessor:
 
     def __init__(self, api_key: str = "", api_base_url: Optional[str] = None, model: Optional[str] = None):
         self.api_key = api_key
-        self.api_base_url = api_base_url or DEFAULT_API_BASE_URL
+        self.api_base_url = api_base_url or DEFAULT_GROQ_API_URL
         self.model = model or DEFAULT_MODEL
         self.temp_dir = Path(tempfile.mkdtemp())
     
@@ -116,9 +116,9 @@ class DouyinProcessor:
         find_res = pattern.search(response.text)
 
         if not find_res or not find_res.group(1):
-            raise ValueError("从HTML中解析视频信息失败")
+            raise ValueError("从 HTML 中解析视频信息失败")
 
-        # 解析JSON数据
+        # 解析 JSON 数据
         json_data = json.loads(find_res.group(1).strip())
         VIDEO_ID_PAGE_KEY = "video_(id)/page"
         NOTE_ID_PAGE_KEY = "note_(id)/page"
@@ -128,7 +128,7 @@ class DouyinProcessor:
         elif NOTE_ID_PAGE_KEY in json_data["loaderData"]:
             original_video_info = json_data["loaderData"][NOTE_ID_PAGE_KEY]["videoInfoRes"]
         else:
-            raise Exception("无法从JSON中解析视频或图集信息")
+            raise Exception("无法从 JSON 中解析视频或图集信息")
 
         data = original_video_info["item_list"][0]
 
@@ -176,7 +176,7 @@ class DouyinProcessor:
         filepath = output_dir / filename
 
         if show_progress:
-            print(f"正在下载视频: {video_info['title']}")
+            print(f"正在下载视频：{video_info['title']}")
 
         response = requests.get(video_info['url'], headers=HEADERS, stream=True)
         response.raise_for_status()
@@ -193,10 +193,10 @@ class DouyinProcessor:
                     downloaded += len(chunk)
                     if show_progress and total_size > 0:
                         progress = downloaded / total_size * 100
-                        print(f"\r下载进度: {progress:.1f}%", end="", flush=True)
+                        print(f"\r下载进度：{progress:.1f}%", end="", flush=True)
 
         if show_progress:
-            print(f"\n视频下载完成: {filepath}")
+            print(f"\n视频下载完成：{filepath}")
         return filepath
 
     def extract_audio(self, video_path: Path, show_progress: bool = True) -> Path:
@@ -213,10 +213,10 @@ class DouyinProcessor:
                 .run(capture_stdout=True, capture_stderr=True, overwrite_output=True)
             )
             if show_progress:
-                print(f"音频提取完成: {audio_path}")
+                print(f"音频提取完成：{audio_path}")
             return audio_path
         except Exception as e:
-            raise Exception(f"提取音频时出错: {str(e)}")
+            raise Exception(f"提取音频时出错：{str(e)}")
 
     def get_audio_info(self, audio_path: Path) -> dict:
         """获取音频文件信息（时长和大小）"""
@@ -270,44 +270,90 @@ class DouyinProcessor:
                     print(f"  分割片段 {segment_index + 1}: {current_time:.0f}s - {min(current_time + segment_duration, duration):.0f}s")
 
             except Exception as e:
-                raise Exception(f"分割音频片段 {segment_index} 时出错: {str(e)}")
+                raise Exception(f"分割音频片段 {segment_index} 时出错：{str(e)}")
 
             current_time += segment_duration
             segment_index += 1
 
         return segments
 
-    def transcribe_single_audio(self, audio_path: Path) -> str:
-        """转录单个音频文件"""
-        files = {
-            'file': (audio_path.name, open(audio_path, 'rb'), 'audio/mpeg'),
-            'model': (None, self.model)
-        }
-
-        headers = {
-            "Authorization": f"Bearer {self.api_key}"
-        }
-
-        try:
-            response = requests.post(self.api_base_url, files=files, headers=headers)
-            response.raise_for_status()
-
+    def transcribe_with_groq(self, audio_path: Path) -> str:
+        """使用 Groq API 转录单个音频文件"""
+        headers = {"Authorization": f"Bearer {self.api_key}"}
+        
+        with open(audio_path, 'rb') as f:
+            files = {"file": f}
+            data = {"model": self.model, "response_format": "verbose_json"}
+            response = requests.post(self.api_base_url, headers=headers, files=files, data=data, timeout=600)
+        
+        if response.status_code == 200:
             result = response.json()
-            if 'text' in result:
-                return result['text']
-            else:
-                return response.text
+            return result.get('text', '')
+        else:
+            raise Exception(f"Groq API 错误：{response.status_code} - {response.text[:200]}")
 
+    def transcribe_with_faster_whisper(self, audio_path: Path) -> str:
+        """使用 Faster-Whisper 本地转录（降级方案）"""
+        try:
+            from faster_whisper import WhisperModel
+            
+            # GPU 检测
+            try:
+                import subprocess
+                result = subprocess.run(
+                    ['nvidia-smi', '--query-gpu=name,memory.total', '--format=csv,noheader,nounits'],
+                    capture_output=True, text=True, timeout=10
+                )
+                if result.returncode == 0:
+                    lines = result.stdout.strip().split('\n')
+                    if lines:
+                        parts = lines[0].split(', ')
+                        gpu_name = parts[0]
+                        vram_gb = int(parts[1]) / 1024
+                        if vram_gb >= 8:
+                            model_size, device = 'large-v2', 'cuda'
+                        elif vram_gb >= 4:
+                            model_size, device = 'medium', 'cuda'
+                        elif vram_gb >= 2:
+                            model_size, device = 'small', 'cuda'
+                        else:
+                            model_size, device = 'base', 'cuda'
+                        print(f"   🖥️ GPU: {gpu_name} ({vram_gb:.1f}GB) | 模型：{model_size}")
+                    else:
+                        model_size, device = 'base', 'cpu'
+                        print("   🖥️ CPU (无 GPU)")
+                else:
+                    model_size, device = 'base', 'cpu'
+                    print("   🖥️ CPU (无 GPU)")
+            except:
+                model_size, device = 'base', 'cpu'
+                print("   🖥️ CPU (无 GPU)")
+            
+            compute_type = "float16" if device == "cuda" else "int8"
+            model = WhisperModel(model_size, device=device, compute_type=compute_type)
+            
+            segments, info = model.transcribe(
+                str(audio_path), 
+                language='zh', 
+                vad_filter=True,
+                initial_prompt="请添加适当的标点符号，使文本更易读。"
+            )
+            
+            return ''.join(seg.text for seg in segments)
+            
+        except ImportError:
+            raise Exception("Faster-Whisper 未安装，运行：pip install faster-whisper")
         except Exception as e:
-            raise Exception(f"提取文字时出错: {str(e)}")
-        finally:
-            files['file'][1].close()
+            raise Exception(f"Faster-Whisper 失败：{str(e)}")
 
     def extract_text_from_audio(self, audio_path: Path, show_progress: bool = True) -> str:
-        """从音频文件中提取文字（支持大文件自动分段）"""
+        """从音频文件中提取文字（Groq API 优先，本地降级）"""
         if not self.api_key:
-            raise ValueError("未设置 API 密钥，请设置环境变量 DOUYIN_API_KEY")
-
+            # 无 API key 时使用本地 Faster-Whisper
+            if show_progress:
+                print("未配置 GROQ_API_KEY，使用本地 Faster-Whisper 转录...")
+            return self.transcribe_with_faster_whisper(audio_path)
+        
         # 检查文件大小和时长
         audio_info = self.get_audio_info(audio_path)
         max_duration = 3600  # 1 小时
@@ -319,16 +365,16 @@ class DouyinProcessor:
         if not need_split:
             # 文件在限制范围内，直接处理
             if show_progress:
-                print("正在识别语音...")
-            return self.transcribe_single_audio(audio_path)
+                print("正在使用 Groq API 识别语音...")
+            return self.transcribe_with_groq(audio_path)
 
         # 需要分段处理
         if show_progress:
-            print(f"音频文件较大（时长: {audio_info['duration']:.0f}秒, 大小: {audio_info['size'] / 1024 / 1024:.1f}MB）")
+            print(f"音频文件较大（时长：{audio_info['duration']:.0f}秒，大小：{audio_info['size'] / 1024 / 1024:.1f}MB）")
             print("将自动分段处理...")
 
         # 分割音频
-        segments = self.split_audio(audio_path, segment_duration=540, show_progress=show_progress)  # 9分钟一段，留余量
+        segments = self.split_audio(audio_path, segment_duration=540, show_progress=show_progress)  # 9 分钟一段，留余量
 
         # 逐段转录
         all_texts = []
@@ -336,7 +382,7 @@ class DouyinProcessor:
             if show_progress:
                 print(f"正在识别第 {i + 1}/{len(segments)} 段...")
 
-            text = self.transcribe_single_audio(segment_path)
+            text = self.transcribe_with_groq(segment_path)
             all_texts.append(text)
 
             # 清理分段文件
@@ -379,9 +425,9 @@ def extract_text(share_link: str, api_key: Optional[str] = None, output_dir: Opt
     返回:
         dict: 包含 video_info, text, output_path 的字典
     """
-    api_key = api_key or os.getenv('API_KEY')
-    if not api_key:
-        raise ValueError("未设置环境变量 API_KEY，请先获取硅基流动 API 密钥")
+    # 使用 GROQ_API_KEY 环境变量或传入的 api_key
+    api_key = api_key or os.getenv('GROQ_API_KEY')
+    # 不强制要求 API key，transcribe 方法会自动降级到本地
 
     processor = DouyinProcessor(api_key)
 
@@ -419,7 +465,7 @@ def extract_text(share_link: str, api_key: Optional[str] = None, output_dir: Opt
             f.write(f"# {video_info['title']}\n\n")
             f.write(f"| 属性 | 值 |\n")
             f.write(f"|------|----|\n")
-            f.write(f"| 视频ID | `{video_info['video_id']}` |\n")
+            f.write(f"| 视频 ID | `{video_info['video_id']}` |\n")
             f.write(f"| 提取时间 | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} |\n")
             f.write(f"| 下载链接 | [点击下载]({video_info['url']}) |\n\n")
             f.write(f"---\n\n")
@@ -429,14 +475,14 @@ def extract_text(share_link: str, api_key: Optional[str] = None, output_dir: Opt
         result["output_path"] = str(video_folder)
 
         if show_progress:
-            print(f"文案已保存到: {transcript_path}")
+            print(f"文案已保存到：{transcript_path}")
 
         # 保存视频 (可选)
         if save_video:
             saved_video_path = video_folder / f"{video_info['video_id']}.mp4"
             shutil.copy2(video_path, saved_video_path)
             if show_progress:
-                print(f"视频已保存到: {saved_video_path}")
+                print(f"视频已保存到：{saved_video_path}")
 
     # 清理临时文件
     if show_progress:
@@ -458,7 +504,7 @@ def main():
   # 下载视频
   python douyin_downloader.py --link "抖音分享链接" --action download --output ./videos
 
-  # 提取文案并保存到文件 (需要设置 DOUYIN_API_KEY 环境变量)
+  # 提取文案并保存到文件 (需要设置 GROQ_API_KEY 环境变量)
   python douyin_downloader.py --link "抖音分享链接" --action extract --output ./output
 
   # 提取文案并同时保存视频
@@ -468,9 +514,9 @@ def main():
 
     parser.add_argument("--link", "-l", required=True, help="抖音分享链接或包含链接的文本")
     parser.add_argument("--action", "-a", choices=["info", "download", "extract"],
-                        default="info", help="操作类型: info(获取信息), download(下载视频), extract(提取文案)")
+                        default="info", help="操作类型：info(获取信息), download(下载视频), extract(提取文案)")
     parser.add_argument("--output", "-o", default="./output", help="输出目录 (默认 ./output)")
-    parser.add_argument("--api-key", "-k", help="硅基流动 API 密钥 (也可通过 DOUYIN_API_KEY 环境变量设置)")
+    parser.add_argument("--api-key", "-k", help="Groq API 密钥 (也可通过 GROQ_API_KEY 环境变量设置)")
     parser.add_argument("--save-video", "-v", action="store_true", help="提取文案时同时保存视频")
     parser.add_argument("--quiet", "-q", action="store_true", help="安静模式，减少输出")
     parser.add_argument("--json", action="store_true", help="输出 JSON 格式（便于脚本解析）")
@@ -517,7 +563,7 @@ def main():
 
         elif args.action == "download":
             video_path = download_video(args.link, args.output)
-            print(f"\n视频已保存到: {video_path}")
+            print(f"\n视频已保存到：{video_path}")
 
         elif args.action == "extract":
             result = extract_text(
@@ -532,17 +578,17 @@ def main():
                 print("\n" + "=" * 50)
                 print("提取完成!")
                 print("=" * 50)
-                print(f"视频ID: {result['video_info']['video_id']}")
-                print(f"标题: {result['video_info']['title']}")
+                print(f"视频 ID: {result['video_info']['video_id']}")
+                print(f"标题：{result['video_info']['title']}")
                 if result['output_path']:
-                    print(f"保存位置: {result['output_path']}")
+                    print(f"保存位置：{result['output_path']}")
                 print("=" * 50)
                 print("\n文案内容:\n")
                 print(result['text'][:500] + "..." if len(result['text']) > 500 else result['text'])
                 print("\n" + "=" * 50)
 
     except Exception as e:
-        print(f"\n错误: {e}", file=sys.stderr)
+        print(f"\n错误：{e}", file=sys.stderr)
         sys.exit(1)
 
 

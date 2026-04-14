@@ -8,7 +8,7 @@ transcribe-audio.py - Plan B: 语音转录字幕
 
 用法：python3 transcribe-audio.py <音频文件> [输出字幕文件]
 
-版本：v1.0.9
+版本：v1.0.10
 更新：移除硅基流动依赖，Groq API 为可选配置
 """
 
