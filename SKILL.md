@@ -38,8 +38,8 @@ metadata:
 
 将 B 站/YouTube/小红书/抖音视频转换为结构化 Notion 总结文档，自动上传截图，一键推送 Notion。
 
-**版本**: 1.0.10  
-**发布**: 2026-04-14  
+**版本**: 1.0.11  
+**发布**: 2026-05-06  
 **许可**: MIT  
 **作者**: Ajay Hao
 
@@ -308,7 +308,7 @@ Step 2: 字幕   Step 3: 视频下载  ← 并行执行
               ↓
 Step 4: 文本提取 (VTT → TXT / Plan B 转录)
        ↓
-Step 5: AI 分析 (DashScope API - qwen3.5-plus)
+Step 5: AI 分析 (DashScope API - qwen3.5-plus，可通过 `DASHSCOPE_MODEL` 环境变量覆盖)
        ↓
 Step 6: 截图生成 (ffmpeg, 基于 AI 时间戳)
        ↓
@@ -324,7 +324,7 @@ Step 9: Notion 推送 (可选)
 | 层级 | 技术 |
 |------|------|
 | 编排层 | Bash (video-summarize.sh) |
-| 分析层 | Python + DashScope API (qwen3.5-plus) |
+| 分析层 | Python + DashScope API (qwen3.5-plus，可通过 `DASHSCOPE_MODEL` 环境变量覆盖) |
 | 转录层 | Groq API (可选) / Faster-Whisper (本地) |
 | 工具层 | yt-dlp (>=2026.03.17), ffmpeg (>=6.1), oss2, requests |
 
@@ -349,14 +349,14 @@ Step 9: Notion 推送 (可选)
 | `video-summarize.sh` | 主流程编排（Plan A/B 自动选择） |
 | `analyze-subtitles-ai.py` | AI 分析 + Markdown 渲染 |
 | `upload-to-oss.py` | OSS 图床上传（截图 + 封面） |
-| `push-to-notion.py` | Notion 推送 |
+| `push-to-notion.py` | Notion 推送（优先使用环境变量 `NOTION_VIDEO_SUMMARY_DATABASE_ID`，其次 CLI 参数） |
 
 ### 平台工具（2 个）
 
 | 脚本 | 功能 |
 |------|------|
 | `bili-login.sh` | B 站扫码登录（获取 Cookies） |
-| `douyin_downloader.py` | 抖音专用下载器（无需 Cookies，转录使用 Groq API + 本地降级） |
+| `douyin_downloader.py` | 抖音专用下载器（无需 Cookies，info/download 操作无需 API；extract 模式使用 Groq API + 本地降级转录音频） |
 
 ### 辅助工具（4 个）
 
@@ -389,7 +389,7 @@ Step 9: Notion 推送 (可选)
 | **小红书** | ❌ 无 | ✅ 唯一 | Plan B |
 | **抖音** | ❌ 无 | ✅ 唯一 | Plan B |
 
-### Plan B 双层降级方案
+### Plan B 三层降级方案
 
 ```
 1. Groq API (whisper-large-v3) → 云端高速（可选，需配置 GROQ_API_KEY 且网络可达）
@@ -401,13 +401,17 @@ Step 9: Notion 推送 (可选)
    ├─ GPU ≥2GB  → small 模型
    ├─ GPU ≥1GB  → base 模型 (GPU)
    └─ 无 GPU    → base 模型 (CPU)
+   └─ 失败 → 降级到方案 3
+
+3. Whisper.cpp / OpenAI Whisper (本地保底)
+   └─ 完全离线，作为最终兜底
 ```
 
 **说明**: 
 - Groq API 为可选配置，未配置时直接使用本地 Faster-Whisper
 - 本地转录无需任何 API Key，完全离线运行
 - 国内使用 Groq 需配置代理
-- **抖音专用下载器** `douyin_downloader.py` 也使用此降级方案（已移除硅基流动依赖）
+- **抖音专用下载器** `douyin_downloader.py` 也使用 Groq API + 本地降级方案（已移除硅基流动依赖），extract 模式用于音频转录
 
 ---
 
@@ -416,9 +420,13 @@ Step 9: Notion 推送 (可选)
 ```
 output/
 ├── summary.md              # 📝 最终总结（主要成果）
+├── ai_result.json          # 🧠 AI 分析原始结果（结构化 JSON）
 ├── screenshot_urls.txt     # 🔗 截图 OSS 链接
 ├── metadata.json           # 📊 视频元数据
 ├── transcript.txt          # 📄 纯文本字幕
+├── audio.txt               # 🎤 语音转录原始文本（Plan B 时使用）
+├── cover_url.txt           # ☁️ 封面 OSS 上传结果
+├── screenshot_times.txt    # ⏱️ 截图时间戳记录
 ├── screenshots/            # 📸 截图原图（本地备份）
 ├── cover.jpg              # 🖼️ 封面图（本地备份）
 └── *.log                   # 📋 日志文件（verbose 模式）

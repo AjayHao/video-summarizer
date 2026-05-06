@@ -2,8 +2,8 @@
 
 🎬 将 B 站/YouTube/小红书/抖音视频转换为结构化 Notion 总结
 
-**版本**: 1.0.10  
-**发布**: 2026-04-12  
+**版本**: 1.0.11  
+**发布**: 2026-05-06  
 **许可**: MIT
 
 ---
@@ -71,11 +71,14 @@ cd ~/.openclaw/skills/video-summarizer/scripts
 
 ```bash
 # 输出目录结构
-output/
-├── summary.md           # 📝 最终总结
-├── screenshot_urls.txt  # 🔗 截图链接
-├── metadata.json        # 📊 视频元数据
-└── screenshots/         # 📸 截图原图
+<output_dir>/
+├── summary.md              # 📝 最终总结
+├── ai_result.json          # 🧠 AI 分析原始结果
+├── screenshot_urls.txt     # 🔗 截图链接
+├── metadata.json           # 📊 视频元数据
+├── transcript.txt          # 📄 纯文本字幕
+├── screenshots/            # 📸 截图原图
+└── *.log                   # 📋 日志文件
 
 # 查看总结
 cat output/summary.md

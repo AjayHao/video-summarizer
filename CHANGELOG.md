@@ -7,6 +7,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.11] - 2026-05-06
+
+### 🔒 安全加固
+
+#### 输入安全校验
+- **新增 `validate_url()` 函数**：URL 长度限制（2048 字符）、shell 元字符黑名单（`;|&(){}\`$<>`）、协议白名单（http/https）、平台白名单（bilibili/b23.tv/xiaohongshu/xhslink/douyin/iesdouyin/v.douyin/youtube/youtu.be）
+- **新增 `validate_output_dir()` 函数**：禁止路径遍历（`..` 检测）、确保绝对路径、系统目录写入保护（/etc、/usr、/bin、/sbin、/root、/boot、/proc、/sys）
+
+#### Python Heredoc 注入修复
+- **Fix-1**: `save_progress()` 改用环境变量传递（VIDEO_URL/OUTPUT_DIR/PROGRESS_FILE/PROGRESS_STEP/PROGRESS_STATUS/PROGRESS_TIMESTAMP），消除 `'''$VAR'''` 字符串拼接注入
+- **Fix-2**: `check_progress()` 改用环境变量传递 PROGRESS_FILE，消除 heredoc 注入
+- **Fix-3**: 抖音元数据解析改用 `echo "$VIDEO_JSON" | python3` stdin 管道传递，环境变量传递 VIDEO_URL/OUTPUT_DIR
+- **Fix-4**: XHS upload_date 提取改用环境变量传递 OUTPUT_DIR
+- **Fix-5**: Step 5 截图时间戳提取改用环境变量传递（AI_JSON/DURATION_SEC/MAX_SCREENSHOTS），消除 `$MAX_SCREENSHOTS` 和 `$DURATION_SEC` heredoc 注入
+- **Fix-6**: Step 6 封面 URL 更新改用环境变量传递（OUTPUT_DIR/COVER_URL）
+
+#### Shell Word Splitting 修复
+- **Fix-7**: 消除 `COOKIE_ARG` word splitting 漏洞 — 所有 `yt-dlp` 调用从 `$COOKIE_ARG` 变量拼接改为 `if/else` 分支直接引用 `"$COOKIES_FILE"`
+- **Fix-7b**: 消除 `SUBTITLE_COOKIE_ARG` word splitting 漏洞 — 字幕下载同理修复
+
+#### 输入校验与纵深防御
+- **Fix-8**: `download-audio.sh` 增加 URL 输入校验（空值检查、长度限制、shell 元字符黑名单）
+- **Fix-9**: Notion 推送改用环境变量 `NOTION_VIDEO_SUMMARY_DATABASE_ID` 传递数据库 ID，不再作为 CLI 明文参数
+- **Fix-12**: `DURATION_SEC` 数值校验（正则 `^[0-9]+$`，失败则降级为默认值 600）
+- **Fix-13**: `.env` 文件权限自动检查，非 600/400 时自动修复为 600
+- **Fix-14**: 清理操作限制在 `/tmp/video-summarizer/*` 范围内，额外清理 `audio.webm` 和 `video.f*` 临时文件
+- **Fix-15**: Cookie 文件权限检查告警
+- **Fix-16**: `ERROR_LOG` 初始化时机修复（从脚本顶部移至 OUTPUT_DIR 确定后）；日志函数改用 `if/then` 替代 `&&`，`set -e` 下安全执行
+
+### 🐛 Bug 修复
+
+- **transcribe-audio.py**: 增加 Groq API 异常捕获（`SSLError`/`ConnectionError`/`Timeout`/`RequestException`），返回结构化错误字典并自动降级到 Faster-Whisper
+
+### 📝 文档修正
+
+**10 处偏差修复**:
+- 更新 Plan B 降级描述：双层 → 三层（增加 Whisper.cpp/原生保底方案）
+- 更新 Notion 推送调用方式：文档说明环境变量优先策略
+- 补充输出文件列表：`ai_result.json`、`audio.txt`、`cover_url.txt`、`screenshot_times.txt`
+- 补充 `DASHSCOPE_MODEL` 环境变量覆盖机制说明
+- 修正 `douyin_downloader.py` extract 模式描述（Groq API 音频转录）
+- 更新 README 输出目录结构示例
+- 修正 `push-to-notion.py` 功能描述，标注环境变量优先
+- 统一版本号至 v1.0.11
+
+### 📦 文件变更统计
+
+| 文件 | 变更类型 |
+|------|----------|
+| `scripts/video-summarize.sh` | +377/-144 行（核心安全重构） |
+| `scripts/transcribe-audio.py` | +19 行（异常处理） |
+| `scripts/download-audio.sh` | +18 行（输入校验） |
+| `scripts/analyze-subtitles-ai.py` | +26/-26 行（版本号） |
+| `SKILL.md` | +14/-10 行（文档修正） |
+| `README.md` | +9/-8 行（文档修正） |
+| `CHANGELOG.md` | +46 行（本条目） |
+| `prompt.json` | +1/-1 行（版本号） |
+| `scripts/push-to-notion.py` | 版本号 |
+| `scripts/upload-to-oss.py` | 版本号 |
+| `templates/README.md` | 版本号 |
+| `templates/summary.md` | 版本号 |
+
+**总计**: 12 files changed, 393 insertions(+), 170 deletions(-)
+
+---
+
 ## [1.0.10] - 2026-04-14
 
 ### 🔒 安全合规优化

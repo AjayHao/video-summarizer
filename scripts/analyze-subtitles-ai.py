@@ -5,7 +5,7 @@ analyze-subtitles-ai.py - 使用 AI 分析字幕生成结构化总结
 
 用法：python3 analyze-subtitles-ai.py <字幕文件> <元数据文件> <输出文件>
 
-版本：v1.0.10
+版本：v1.0.11
 """
 
 import sys
@@ -163,7 +163,8 @@ def ai_analyze(transcript: str, video_info: dict) -> dict:
             'stream': False
         }
         
-        # 超时重试机制（超时：300s → 600s → 900s）
+        # 重试机制：超时 + 可重试 HTTP 错误（超时 300s → 600s → 900s）
+        RETRYABLE_STATUS = {429, 500, 502, 503, 504}
         response = None
         for attempt in range(3):
             try:
@@ -177,27 +178,34 @@ def ai_analyze(transcript: str, video_info: dict) -> dict:
                 )
                 if response.status_code == 200:
                     break
-            except requests.exceptions.Timeout:
-                print(f"   ⚠️  超时，准备重试...")
+                if response.status_code in RETRYABLE_STATUS:
+                    print(f"   ⚠️  {response.status_code}，准备重试...")
+                    continue
+                else:
+                    print(f"   ❌ {response.status_code} - {response.text[:200]}")
+                    return None
+            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+                print(f"   ⚠️  {type(e).__name__}，准备重试...")
                 if attempt == 2:
                     raise
-        
-        if response.status_code == 200:
-            ai_response = response.json()['choices'][0]['message']['content']
-            
-            # 提取 JSON 内容
-            json_match = re.search(r'```json\s*(.*?)\s*```', ai_response, re.DOTALL)
-            if json_match:
-                json_str = json_match.group(1)
-            else:
-                json_str = ai_response
-            
-            result = json.loads(json_str)
-            print(f"   ✅ AI 分析完成")
-            return result
-        else:
-            print(f"   ❌ AI 调用失败：{response.status_code} - {response.text[:200]}")
+
+        if response is None or response.status_code != 200:
+            if response is not None:
+                print(f"   ❌ AI 调用失败：{response.status_code} - {response.text[:200]}")
             return None
+
+        ai_response = response.json()['choices'][0]['message']['content']
+
+        # 提取 JSON 内容
+        json_match = re.search(r'```json\s*(.*?)\s*```', ai_response, re.DOTALL)
+        if json_match:
+            json_str = json_match.group(1)
+        else:
+            json_str = ai_response
+
+        result = json.loads(json_str)
+        print(f"   ✅ AI 分析完成")
+        return result
     
     except Exception as e:
         print(f"   ❌ 分析异常：{str(e)}")
@@ -665,7 +673,7 @@ def main():
     output_file = sys.argv[3]
     
     print("=" * 50)
-    print("🧠 AI 字幕分析器 v1.0.10")
+    print("🧠 AI 字幕分析器 v1.0.11")
     print("=" * 50)
     print()
     
@@ -805,7 +813,7 @@ AI 分析暂时不可用，请稍后重试。
 ---
 
 *生成时间：{datetime.now().strftime("%Y-%m-%d")}*
-*技能版本：video-summarizer v1.0.10*
+*技能版本：video-summarizer v1.0.11*
 """
         with open(output_file, 'w', encoding='utf-8') as f:
             f.write(md_content)

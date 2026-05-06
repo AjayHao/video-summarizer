@@ -1,20 +1,20 @@
 #!/bin/bash
-# video-summarize.sh - 视频总结生成完整流程 v1.0.10
-# 更新日期：2026-04-12
+# video-summarize.sh - 视频总结生成完整流程 v1.0.11
+# 更新日期：2026-05-06
 # 用法：./video-summarize.sh <视频 URL> [输出目录] [cookies 文件] [选项]
 
 set -e
 
 # ============== 错误处理与日志 ==============
 
-# 日志级别函数
-log_info() { echo "ℹ️  $*"; echo "[INFO] $(date '+%Y-%m-%d %H:%M:%S') $*" >> "$ERROR_LOG" 2>/dev/null; }
-log_warn() { echo "⚠️  $*"; echo "[WARN] $(date '+%Y-%m-%d %H:%M:%S') $*" >> "$ERROR_LOG" 2>/dev/null; }
-log_error() { echo "❌ $*"; echo "[ERROR] $(date '+%Y-%m-%d %H:%M:%S') $*" >> "$ERROR_LOG" 2>/dev/null; }
-log_debug() { [[ "$VERBOSE" == "true" ]] && echo "🔍 $*"; [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] $(date '+%Y-%m-%d %H:%M:%S') $*" >> "$ERROR_LOG" 2>/dev/null; }
+# 日志级别函数（ERROR_LOG 为空时不写入文件）
+log_info() { echo "ℹ️  $*"; if [[ -n "$ERROR_LOG" ]]; then echo "[INFO] $(date '+%Y-%m-%d %H:%M:%S') $*" >> "$ERROR_LOG" 2>/dev/null; fi; }
+log_warn() { echo "⚠️  $*"; if [[ -n "$ERROR_LOG" ]]; then echo "[WARN] $(date '+%Y-%m-%d %H:%M:%S') $*" >> "$ERROR_LOG" 2>/dev/null; fi; }
+log_error() { echo "❌ $*"; if [[ -n "$ERROR_LOG" ]]; then echo "[ERROR] $(date '+%Y-%m-%d %H:%M:%S') $*" >> "$ERROR_LOG" 2>/dev/null; fi; }
+log_debug() { if [[ "$VERBOSE" == "true" ]]; then echo "🔍 $*"; if [[ -n "$ERROR_LOG" ]]; then echo "[DEBUG] $(date '+%Y-%m-%d %H:%M:%S') $*" >> "$ERROR_LOG" 2>/dev/null; fi; fi; }
 
 # 错误捕获 trap
-ERROR_LOG="$OUTPUT_DIR/error.log"  # 在 OUTPUT_DIR 确定后设置
+ERROR_LOG=""  # 在 OUTPUT_DIR 确定后设置
 cleanup_on_error() {
     local exit_code=$?
     if [[ $exit_code -ne 0 && -n "$ERROR_LOG" && -f "$ERROR_LOG" ]]; then
@@ -80,6 +80,65 @@ if [[ -z "$VIDEO_URL" ]]; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# ============== 输入安全校验 ==============
+
+# URL 安全校验（阻断注入攻击）
+validate_url() {
+    local url="$1"
+    
+    # 最大长度 2048 字符
+    if [[ ${#url} -gt 2048 ]]; then
+        log_error "URL 过长 (>2048 字符)"
+        exit 1
+    fi
+    
+    # 字符黑名单：排除 shell 元字符
+    if [[ "$url" =~ [\;\|\&\(\)\{\}\`\$\<\>] ]]; then
+        log_error "URL 包含非法字符"
+        exit 1
+    fi
+    
+    # 协议白名单
+    if [[ ! "$url" =~ ^https?:// ]]; then
+        log_error "仅支持 http/https 协议"
+        exit 1
+    fi
+    
+    # 平台白名单
+    if [[ "$url" =~ ^(https?://)([a-zA-Z0-9.-]*\.)?(bilibili\.com|b23\.tv|xiaohongshu\.com|xhslink\.com|douyin\.com|iesdouyin\.com|v\.douyin\.com|youtube\.com|youtu\.be)/ ]]; then
+        return 0
+    fi
+    
+    log_error "不支持的平台"
+    exit 1
+}
+
+# 输出目录安全校验（阻止路径遍历）
+validate_output_dir() {
+    local dir="$1"
+    
+    # 禁止路径遍历
+    if [[ "$dir" =~ \.\. ]]; then
+        log_error "输出目录包含路径遍历字符 '..'"
+        exit 1
+    fi
+    
+    # 确保绝对路径
+    if [[ "$dir" != /* ]]; then
+        dir="$(pwd)/$dir"
+    fi
+    
+    # 禁止写入系统敏感路径
+    case "$dir" in
+        /etc/*|/usr/*|/bin/*|/sbin/*|/root/*|/boot/*|/proc/*|/sys/*)
+            log_error "禁止写入系统目录"
+            exit 1
+            ;;
+    esac
+    
+    OUTPUT_DIR="$dir"
+}
 
 # ============== 平台识别与输出目录生成 ==============
 
@@ -176,21 +235,40 @@ extract_video_id() {
     esac
 }
 
+# URL 安全校验
+validate_url "$VIDEO_URL"
+
 # 生成输出目录
 PLATFORM=$(extract_platform "$VIDEO_URL")
 VIDEO_ID=$(extract_video_id "$VIDEO_URL" "$PLATFORM")
 
 if [[ "$USER_SPECIFIED_OUTPUT" == "true" ]]; then
-    # 用户手动指定了目录，直接使用
-    : # OUTPUT_DIR 已设置
+    validate_output_dir "$OUTPUT_DIR"
 else
-    # 自动生成：/tmp/video-summarizer/<平台>/<视频 ID>
     OUTPUT_DIR="/tmp/video-summarizer/$PLATFORM/$VIDEO_ID"
 fi
 
 mkdir -p "$OUTPUT_DIR"
 
-# 初始化错误日志文件
+# 安全校验：.env 文件权限
+ENV_FILE_CHECK="$HOME/.openclaw/.env"
+if [[ -f "$ENV_FILE_CHECK" ]]; then
+    ENV_PERMS=$(stat -c '%a' "$ENV_FILE_CHECK" 2>/dev/null)
+    if [[ "$ENV_PERMS" != "600" && "$ENV_PERMS" != "400" ]]; then
+        log_warn ".env 文件权限不安全 (当前: $ENV_PERMS)，已修复为 600"
+        chmod 600 "$ENV_FILE_CHECK"
+    fi
+fi
+
+# 安全校验：Cookie 文件权限
+if [[ -n "$COOKIES_FILE" && -f "$COOKIES_FILE" ]]; then
+    COOKIE_PERMS=$(stat -c '%a' "$COOKIES_FILE" 2>/dev/null)
+    if [[ "$COOKIE_PERMS" != "600" && "$COOKIE_PERMS" != "400" ]]; then
+        log_warn "Cookie 文件权限不安全 (当前: $COOKIE_PERMS)，建议 600"
+    fi
+fi
+
+# 初始化错误日志文件（OUTPUT_DIR 已确定）
 ERROR_LOG="$OUTPUT_DIR/error.log"
 echo "" > "$ERROR_LOG"  # 清空旧日志
 
@@ -225,30 +303,41 @@ fi
 [[ "$RESUME" == "true" ]] && echo "♻️  恢复模式"
 echo ""
 
-# 进度保存函数
+# 进度保存函数（环境变量传递，无 shell 注入）
 save_progress() {
     local step=$1
     local status=$2
-    local timestamp=$(date -Iseconds)
-    # 使用 Python 安全生成 JSON（防止命令注入）
+    local timestamp
+    timestamp=$(date -Iseconds)
+    PROGRESS_STEP="$step" \
+    PROGRESS_STATUS="$status" \
+    PROGRESS_TIMESTAMP="$timestamp" \
+    VIDEO_URL="$VIDEO_URL" \
+    OUTPUT_DIR="$OUTPUT_DIR" \
+    PROGRESS_FILE="$PROGRESS_FILE" \
     python3 -c "
-import json
+import os, json
 data = {
-    'video_url': '''$VIDEO_URL''',
-    'current_step': '$step',
-    'status': '$status',
-    'timestamp': '$timestamp',
-    'output_dir': '''$OUTPUT_DIR'''
+    'video_url': os.environ['VIDEO_URL'],
+    'current_step': os.environ['PROGRESS_STEP'],
+    'status': os.environ['PROGRESS_STATUS'],
+    'timestamp': os.environ['PROGRESS_TIMESTAMP'],
+    'output_dir': os.environ['OUTPUT_DIR']
 }
-with open('$PROGRESS_FILE', 'w') as f:
+with open(os.environ['PROGRESS_FILE'], 'w') as f:
     json.dump(data, f, indent=2)
 "
 }
 
-# 检查进度（恢复模式）
+# 检查进度（恢复模式，环境变量传递）
 check_progress() {
     if [[ "$RESUME" == "true" && -f "$PROGRESS_FILE" ]]; then
-        local last_step=$(python3 -c "import json; print(json.load(open('$PROGRESS_FILE')).get('current_step', ''))" 2>/dev/null)
+        local last_step
+        last_step=$(PROGRESS_FILE="$PROGRESS_FILE" python3 -c "
+import os, json
+with open(os.environ['PROGRESS_FILE']) as f:
+    print(json.load(f).get('current_step', ''))
+" 2>/dev/null)
         if [[ -n "$last_step" ]]; then
             echo "♻️  检测到上次运行到：Step $last_step"
             echo "   将跳过已完成的步骤..."
@@ -258,7 +347,7 @@ check_progress() {
     return 1
 }
 
-echo "🎬 Video Summarizer v1.0.10"
+echo "🎬 Video Summarizer v1.0.11"
 echo ""
 
 # Step 1: 元数据
@@ -278,37 +367,34 @@ else
             # 获取视频信息（JSON 格式，便于解析）
             VIDEO_JSON=$(python3 "$DOUYIN_SCRIPT" --link "$VIDEO_URL" --action info --json 2>/dev/null)
             
-            # 使用 Python 解析 JSON 并安全生成 metadata.json（防止命令注入）
-            python3 << PYEOF
-import sys
-import json
+            # 使用 stdin 管道传递 JSON，环境变量传递路径（无 shell 注入）
+            echo "$VIDEO_JSON" | VIDEO_URL="$VIDEO_URL" OUTPUT_DIR="$OUTPUT_DIR" python3 -c "
+import sys, json, os
 
 try:
-    data = json.loads('''$VIDEO_JSON''')
+    data = json.loads(sys.stdin.read())
     
-    # 提取字段并清理
     metadata = {
-        "title": str(data.get('title', '')).replace('\n', ' ').replace('\r', '').strip(),
-        "uploader": str(data.get('author', '')),
-        "uploader_id": str(data.get('video_id', '')),
-        "duration": 0,
-        "duration_string": str(data.get('duration_string', '')),
-        "thumbnail": str(data.get('cover', '')),
-        "webpage_url": "$VIDEO_URL",
-        "platform": "douyin",
-        "download_url": str(data.get('url', '')),
-        "upload_date": str(data.get('upload_date', ''))
+        'title': str(data.get('title', '')).replace('\\n', ' ').replace('\\r', '').strip(),
+        'uploader': str(data.get('author', '')),
+        'uploader_id': str(data.get('video_id', '')),
+        'duration': 0,
+        'duration_string': str(data.get('duration_string', '')),
+        'thumbnail': str(data.get('cover', '')),
+        'webpage_url': os.environ['VIDEO_URL'],
+        'platform': 'douyin',
+        'download_url': str(data.get('url', '')),
+        'upload_date': str(data.get('upload_date', ''))
     }
     
-    # 安全写入 JSON 文件（json.dump 自动转义特殊字符）
-    with open('$OUTPUT_DIR/metadata.json', 'w', encoding='utf-8') as f:
+    with open(os.path.join(os.environ['OUTPUT_DIR'], 'metadata.json'), 'w', encoding='utf-8') as f:
         json.dump(metadata, f, indent=2, ensure_ascii=False)
     
-    print(f"✅ 元数据完成 | 标题：{metadata['title']} | 视频 ID: {metadata['uploader_id']}")
+    print(f\"✅ 元数据完成 | 标题：{metadata['title']} | 视频 ID: {metadata['uploader_id']}\")
 except Exception as e:
-    print(f"❌ 元数据解析失败：{e}", file=sys.stderr)
+    print(f'❌ 元数据解析失败：{e}', file=sys.stderr)
     sys.exit(1)
-PYEOF
+"
         else
             log_warn "抖音下载脚本不存在，使用 yt-dlp"
             if [[ -f "$COOKIES_FILE" ]]; then
@@ -333,16 +419,16 @@ PYEOF
             fi
         fi
         
-        # 为小红书提取 upload_date（从笔记 ID 解析）
+        # 为小红书提取 upload_date（从笔记 ID 解析，环境变量传递路径）
         if [[ "$PLATFORM" == "xhs" ]]; then
-            python3 << PYEOF >> "$OUTPUT_DIR/metadata.json"
-import json
+            OUTPUT_DIR="$OUTPUT_DIR" python3 -c "
+import json, os
 from datetime import datetime
 
-with open('$OUTPUT_DIR/metadata.json', 'r') as f:
+output_dir = os.environ['OUTPUT_DIR']
+with open(os.path.join(output_dir, 'metadata.json'), 'r') as f:
     meta = json.load(f)
 
-# 从笔记 ID 解析时间戳（前 8 位 hex）
 note_id = meta.get('id', '') or meta.get('display_id', '') or meta.get('webpage_url', '').split('/')[-1].split('?')[0]
 if len(note_id) >= 8:
     try:
@@ -352,12 +438,11 @@ if len(note_id) >= 8:
     except:
         meta['upload_date'] = ''
 else:
-    # 使用 yt-dlp 的 upload_date
     meta['upload_date'] = meta.get('upload_date', '')
 
-with open('$OUTPUT_DIR/metadata.json', 'w') as f:
+with open(os.path.join(output_dir, 'metadata.json'), 'w') as f:
     json.dump(meta, f, indent=2, ensure_ascii=False)
-PYEOF
+"
         fi
     fi
     
@@ -438,41 +523,65 @@ else
         
         # 非抖音平台或抖音下载失败
         if [[ "$DOWNLOAD_SUCCESS" != "true" ]]; then
-            # 构建 Cookies 参数（如果有）
-            COOKIE_ARG=""
-            if [[ -n "$COOKIES_FILE" && -f "$COOKIES_FILE" ]]; then
-                COOKIE_ARG="--cookies $COOKIES_FILE"
-            fi
-            
             for i in 1 2 3; do
                 log_info "[视频任务] 尝试 $i/3..."
-                if [[ "$VERBOSE" == "true" ]]; then
-                    yt-dlp $COOKIE_ARG -f "bestvideo[height<=720]+bestaudio/best[height<=720]" \
-                           --merge-output-format mp4 \
-                           -o "$VIDEO_FILE" "$VIDEO_URL" 2>&1 | tee -a "$VIDEO_LOG" && { DOWNLOAD_SUCCESS=true; break; } || {
-                        rm -f "$VIDEO_FILE"* 2>/dev/null
-                    }
+                if [[ -n "$COOKIES_FILE" && -f "$COOKIES_FILE" ]]; then
+                    if [[ "$VERBOSE" == "true" ]]; then
+                        yt-dlp --cookies "$COOKIES_FILE" -f "bestvideo[height<=720]+bestaudio/best[height<=720]" \
+                               --merge-output-format mp4 \
+                               -o "$VIDEO_FILE" "$VIDEO_URL" 2>&1 | tee -a "$VIDEO_LOG" && { DOWNLOAD_SUCCESS=true; break; } || {
+                            rm -f "$VIDEO_FILE"* 2>/dev/null
+                        }
+                    else
+                        yt-dlp --cookies "$COOKIES_FILE" -f "bestvideo[height<=720]+bestaudio/best[height<=720]" \
+                               --merge-output-format mp4 \
+                               -o "$VIDEO_FILE" "$VIDEO_URL" 2>/dev/null && { DOWNLOAD_SUCCESS=true; break; } || {
+                            rm -f "$VIDEO_FILE"* 2>/dev/null
+                        }
+                    fi
                 else
-                    yt-dlp $COOKIE_ARG -f "bestvideo[height<=720]+bestaudio/best[height<=720]" \
-                           --merge-output-format mp4 \
-                           -o "$VIDEO_FILE" "$VIDEO_URL" 2>/dev/null && { DOWNLOAD_SUCCESS=true; break; } || {
-                        rm -f "$VIDEO_FILE"* 2>/dev/null
-                    }
+                    if [[ "$VERBOSE" == "true" ]]; then
+                        yt-dlp -f "bestvideo[height<=720]+bestaudio/best[height<=720]" \
+                               --merge-output-format mp4 \
+                               -o "$VIDEO_FILE" "$VIDEO_URL" 2>&1 | tee -a "$VIDEO_LOG" && { DOWNLOAD_SUCCESS=true; break; } || {
+                            rm -f "$VIDEO_FILE"* 2>/dev/null
+                        }
+                    else
+                        yt-dlp -f "bestvideo[height<=720]+bestaudio/best[height<=720]" \
+                               --merge-output-format mp4 \
+                               -o "$VIDEO_FILE" "$VIDEO_URL" 2>/dev/null && { DOWNLOAD_SUCCESS=true; break; } || {
+                            rm -f "$VIDEO_FILE"* 2>/dev/null
+                        }
+                    fi
                 fi
             done
             
             if [[ "$DOWNLOAD_SUCCESS" != "true" ]]; then
                 log_warn "[视频任务] 降级尝试..."
-                if [[ "$VERBOSE" == "true" ]]; then
-                    yt-dlp $COOKIE_ARG -f "best" --merge-output-format mp4 -o "$VIDEO_FILE" "$VIDEO_URL" 2>&1 | tee -a "$VIDEO_LOG" || {
-                        log_error "[视频任务] 视频下载失败"
-                        exit 1
-                    }
+                if [[ -n "$COOKIES_FILE" && -f "$COOKIES_FILE" ]]; then
+                    if [[ "$VERBOSE" == "true" ]]; then
+                        yt-dlp --cookies "$COOKIES_FILE" -f "best" --merge-output-format mp4 -o "$VIDEO_FILE" "$VIDEO_URL" 2>&1 | tee -a "$VIDEO_LOG" || {
+                            log_error "[视频任务] 视频下载失败"
+                            exit 1
+                        }
+                    else
+                        yt-dlp --cookies "$COOKIES_FILE" -f "best" --merge-output-format mp4 -o "$VIDEO_FILE" "$VIDEO_URL" 2>/dev/null || {
+                            log_error "[视频任务] 视频下载失败"
+                            exit 1
+                        }
+                    fi
                 else
-                    yt-dlp $COOKIE_ARG -f "best" --merge-output-format mp4 -o "$VIDEO_FILE" "$VIDEO_URL" 2>/dev/null || {
-                        log_error "[视频任务] 视频下载失败"
-                        exit 1
-                    }
+                    if [[ "$VERBOSE" == "true" ]]; then
+                        yt-dlp -f "best" --merge-output-format mp4 -o "$VIDEO_FILE" "$VIDEO_URL" 2>&1 | tee -a "$VIDEO_LOG" || {
+                            log_error "[视频任务] 视频下载失败"
+                            exit 1
+                        }
+                    else
+                        yt-dlp -f "best" --merge-output-format mp4 -o "$VIDEO_FILE" "$VIDEO_URL" 2>/dev/null || {
+                            log_error "[视频任务] 视频下载失败"
+                            exit 1
+                        }
+                    fi
                 fi
             fi
         fi
@@ -518,23 +627,34 @@ else
         # 尝试 2: 自动字幕
         if [[ -z "$SUBTITLE_FILE" ]]; then
             log_info "[字幕任务] 尝试下载自动字幕..."
-            # 构建 Cookies 参数（如果有）
-            SUBTITLE_COOKIE_ARG=""
             if [[ -n "$COOKIES_FILE" && -f "$COOKIES_FILE" ]]; then
-                SUBTITLE_COOKIE_ARG="--cookies $COOKIES_FILE"
-            fi
-            if [[ "$VERBOSE" == "true" ]]; then
-                yt-dlp $SUBTITLE_COOKIE_ARG --write-auto-sub \
-                       --sub-lang "zh-Hans,zh,en" \
-                       --skip-download \
-                       --convert-subs vtt \
-                       -o "$OUTPUT_DIR/video" "$VIDEO_URL" 2>&1 | tee -a "$SUBTITLE_LOG" || true
+                if [[ "$VERBOSE" == "true" ]]; then
+                    yt-dlp --cookies "$COOKIES_FILE" --write-auto-sub \
+                           --sub-lang "zh-Hans,zh,en" \
+                           --skip-download \
+                           --convert-subs vtt \
+                           -o "$OUTPUT_DIR/video" "$VIDEO_URL" 2>&1 | tee -a "$SUBTITLE_LOG" || true
+                else
+                    yt-dlp --cookies "$COOKIES_FILE" --write-auto-sub \
+                           --sub-lang "zh-Hans,zh,en" \
+                           --skip-download \
+                           --convert-subs vtt \
+                           -o "$OUTPUT_DIR/video" "$VIDEO_URL" 2>/dev/null || true
+                fi
             else
-                yt-dlp $SUBTITLE_COOKIE_ARG --write-auto-sub \
-                       --sub-lang "zh-Hans,zh,en" \
-                       --skip-download \
-                       --convert-subs vtt \
-                       -o "$OUTPUT_DIR/video" "$VIDEO_URL" 2>/dev/null || true
+                if [[ "$VERBOSE" == "true" ]]; then
+                    yt-dlp --write-auto-sub \
+                           --sub-lang "zh-Hans,zh,en" \
+                           --skip-download \
+                           --convert-subs vtt \
+                           -o "$OUTPUT_DIR/video" "$VIDEO_URL" 2>&1 | tee -a "$SUBTITLE_LOG" || true
+                else
+                    yt-dlp --write-auto-sub \
+                           --sub-lang "zh-Hans,zh,en" \
+                           --skip-download \
+                           --convert-subs vtt \
+                           -o "$OUTPUT_DIR/video" "$VIDEO_URL" 2>/dev/null || true
+                fi
             fi
             
             SUBTITLE_FILE=$(find "$OUTPUT_DIR" -name "*.vtt" 2>/dev/null | head -1)
@@ -696,56 +816,57 @@ else
     
     if [[ -f "$AI_JSON" ]]; then
         echo "   📊 从 AI 分析结果提取时间戳..."
-        # 使用 Python 提取 key_points 和 warnings 中的时间戳
-        SCREENSHOT_TIMES=($(python3 << PYEOF
-import json
-import sys
+        # DURATION_SEC 数字校验
+        if [[ ! "$DURATION_SEC" =~ ^[0-9]+$ ]]; then
+            log_warn "DURATION_SEC 异常，设为默认值 600"
+            DURATION_SEC=600
+        fi
+        # 使用环境变量传递路径和数值（无 shell 注入）
+        SCREENSHOT_TIMES=($(AI_JSON="$AI_JSON" DURATION_SEC="$DURATION_SEC" MAX_SCREENSHOTS="$MAX_SCREENSHOTS" python3 -c "
+import json, os, sys
 
 try:
-    with open('$AI_JSON', 'r', encoding='utf-8') as f:
+    with open(os.environ['AI_JSON'], 'r', encoding='utf-8') as f:
         data = json.load(f)
     
     times = []
-    # 提取核心要点时间戳（优先）
     for point in data.get('key_points', []):
         time_str = point.get('time', '')
         if time_str:
             times.append(time_str)
     
-    # 提取注意事项时间戳
     for warning in data.get('warnings', []):
         time_str = warning.get('time', '')
         if time_str:
             times.append(time_str)
     
-    # 去重，限制最多 30 个
-    unique_times = list(dict.fromkeys(times))[:$MAX_SCREENSHOTS]
+    max_ss = int(os.environ.get('MAX_SCREENSHOTS', '30'))
+    unique_times = list(dict.fromkeys(times))[:max_ss]
     
-    # 如果不足 10 个，用均匀分布补充到 10 个
     if len(unique_times) < 10:
-        # 简单均匀分布兜底
-        interval = $DURATION_SEC // 11
+        duration = int(os.environ['DURATION_SEC'])
+        interval = duration // 11
         for i in range(1, 11):
             t = interval * i
             mm = t // 60
             ss = t % 60
-            fallback = f"{mm:02d}:{ss:02d}"
+            fallback = f'{mm:02d}:{ss:02d}'
             if fallback not in unique_times:
                 unique_times.append(fallback)
             if len(unique_times) >= 10:
                 break
     
-    for t in unique_times[:$MAX_SCREENSHOTS]:
+    for t in unique_times[:max_ss]:
         print(t)
 except Exception as e:
-    # AI 结果解析失败，使用均匀分布
-    interval = $DURATION_SEC // 11
+    duration = int(os.environ['DURATION_SEC'])
+    interval = duration // 11
     for i in range(1, 11):
         t = interval * i
         mm = t // 60
         ss = t % 60
-        print(f"{mm:02d}:{ss:02d}")
-PYEOF
+        print(f'{mm:02d}:{ss:02d}')
+"
 ))
         echo "   ✅ 提取到 ${#SCREENSHOT_TIMES[@]} 个时间点"
     else
@@ -860,17 +981,17 @@ if [[ -f "$OSS_SCRIPT" ]]; then
         COVER_URL=$(python3 -c "import json; print(json.load(open('$COVER_FILE')).get('oss_url', ''))" 2>/dev/null)
         if [[ -n "$COVER_URL" ]]; then
             echo "✅ 封面上传成功：$COVER_URL" >> "$OSS_LOG_FILE"
-            # 更新元数据中的 thumbnail 字段
-            python3 << PYEOF >> "$OSS_LOG_FILE" 2>&1
-import json
-with open('$OUTPUT_DIR/metadata.json', 'r+', encoding='utf-8') as f:
+            # 更新元数据中的 thumbnail 字段（环境变量传递，无 shell 注入）
+            OUTPUT_DIR="$OUTPUT_DIR" COVER_URL="$COVER_URL" python3 -c "
+import json, os
+with open(os.path.join(os.environ['OUTPUT_DIR'], 'metadata.json'), 'r+', encoding='utf-8') as f:
     data = json.load(f)
-    data['thumbnail'] = '$COVER_URL'
+    data['thumbnail'] = os.environ['COVER_URL']
     f.seek(0)
     json.dump(data, f, ensure_ascii=False, indent=2)
     f.truncate()
-print("✅ 元数据已更新")
-PYEOF
+print('✅ 元数据已更新')
+" >> "$OSS_LOG_FILE" 2>&1
         else
             echo "⚠️  封面上传失败，使用原始 URL" >> "$OSS_LOG_FILE"
         fi
@@ -910,8 +1031,17 @@ echo ""
 
 [[ "$VERBOSE" == "true" ]] && { echo "📄 文件:"; ls -lh "$OUTPUT_DIR"; echo "📸 截图:"; ls "$OUTPUT_DIR/screenshots/"; } || echo "📄 总结：$SUMMARY_FILE | 截图：$(ls "$OUTPUT_DIR/screenshots/" 2>/dev/null | wc -l) 张"
 
-# 清理
-[[ "$KEEP_VIDEO" != "true" ]] && { rm -f "$OUTPUT_DIR/video.mp4" "$OUTPUT_DIR/audio.mp3" 2>/dev/null; echo "🧹 已清理视频/音频"; } || echo "💾 保留视频/音频"
+# 安全清理（限制目录范围）
+if [[ "$KEEP_VIDEO" != "true" ]]; then
+    if [[ "$OUTPUT_DIR" == /tmp/video-summarizer/* ]]; then
+        rm -f "$OUTPUT_DIR/video.mp4" "$OUTPUT_DIR/audio.mp3" "$OUTPUT_DIR/audio.webm" "$OUTPUT_DIR/video.f"* 2>/dev/null
+        echo "🧹 已清理视频/音频"
+    else
+        log_warn "跳过清理：输出目录不在预期范围内"
+    fi
+else
+    echo "💾 保留视频/音频"
+fi
 
 # 截图状态
 [[ $(python3 -c "import json; print(len([x for x in json.load(open('$OSS_URLS_FILE')) if x.get('success')]))" 2>/dev/null || echo 0) -gt 0 ]] && echo "📸 截图：✅ 已上传" || echo "📸 截图：⚠️  本地"
@@ -952,7 +1082,8 @@ if [[ "$NOTION_CONFIGURED" == "true" ]]; then
     echo "ℹ️     Notion 配置已检测，开始推送..."
     save_progress "9" "running"
     
-    python3 "$SCRIPT_DIR/push-to-notion.py" "$SUMMARY_FILE" "$NOTION_DB_ID"
+    NOTION_VIDEO_SUMMARY_DATABASE_ID="$NOTION_DB_ID" \
+    python3 "$SCRIPT_DIR/push-to-notion.py" "$SUMMARY_FILE"
     PUSH_EXIT=$?
     
     if [[ $PUSH_EXIT -eq 0 ]]; then
