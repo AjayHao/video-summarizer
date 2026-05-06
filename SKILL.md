@@ -26,7 +26,7 @@ metadata:
             {
               "id": "pip",
               "kind": "pip",
-              "packages": "requests oss2 python-dotenv biliup",
+              "packages": "requests==2.31.0 oss2==2.18.4 python-dotenv==1.0.1 biliup==0.4.86",
               "label": "Install Python dependencies",
             },
           ],
@@ -38,7 +38,7 @@ metadata:
 
 将 B 站/YouTube/小红书/抖音视频转换为结构化 Notion 总结文档，自动上传截图，一键推送 Notion。
 
-**版本**: 1.0.11  
+**版本**: 1.0.12  
 **发布**: 2026-05-06  
 **许可**: MIT  
 **作者**: Ajay Hao
@@ -103,6 +103,15 @@ metadata:
 - **OSS Bucket**: 创建专用 Bucket，仅授予 PutObject/GetObject 权限
 - **API Keys**: 使用子账号 Key，设置 IP 白名单
 - **测试环境**: 首次使用建议在隔离环境测试
+
+### ⚠️ 数据流向提醒
+
+- **DashScope**: 字幕文本和视频元数据会发送至阿里云 DashScope API（AI 分析必需），请勿处理包含敏感信息的视频
+- **Groq（可选）**: 音频片段会发送至 Groq API（加速转录），未配置时自动降级为本地 Faster-Whisper
+- **阿里云 OSS**: 截图和封面图上传至 OSS Bucket，建议配置为专用 Bucket 并设置为私有读/写
+- **Notion**: 总结结果推送至 Notion 数据库，确保 Integration 仅授予目标数据库权限
+- **B 站 Cookies**: 扫码登录后存储于 `~/.cookies/bilibili_cookies.txt`，权限已限制为 600，仅限本机访问
+- **Cookie 安全**: 登录完成后临时 `cookies.json` 会自动清理，不残留 skill 目录内
 
 ---
 
@@ -223,19 +232,19 @@ ALIYUN_OSS_BUCKET_ID=your_bucket_name
 ALIYUN_OSS_ENDPOINT=oss-cn-shanghai.aliyuncs.com
 
 # AI 分析（DashScope API）
-DASHSCOPE_API_KEY=sk-xxxxxxxxxxxxxxxx
+DASHSCOPE_API_KEY=<your_dashscope_api_key>
 
 # ========== 可选配置 ==========
 
 # Notion 自动推送（可选）
-NOTION_API_KEY=nop_xxxxxxxxxxxxxxxx
-NOTION_VIDEO_SUMMARY_DATABASE_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx  # 单个数据库 ID
+NOTION_API_KEY=<your_notion_api_key>
+NOTION_VIDEO_SUMMARY_DATABASE_ID=<your_database_id>  # 单个数据库 ID
 
 # 语音转录加速（Groq API，可选）
 # 国内需代理访问，如未配置自动降级到本地 Faster-Whisper
 # 不配置此项不影响使用
 # 注意：douyin_downloader.py 也使用此变量（已移除硅基流动依赖）
-GROQ_API_KEY=gsk_xxxxxxxxxxxxxxxx
+GROQ_API_KEY=<your_groq_api_key>
 
 # 本地 Whisper 模型（有 GPU 时自动检测）
 WHISPER_MODEL=base  # tiny/base/small/medium/large
@@ -276,8 +285,8 @@ WHISPER_MODEL=base  # tiny/base/small/medium/large
 
 4. **配置环境变量**：
    ```bash
-   NOTION_API_KEY=nop_xxxxxxxxxxxxxxxx
-   NOTION_VIDEO_SUMMARY_DATABASE_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx  # 单个数据库
+   NOTION_API_KEY=<your_notion_api_key>
+   NOTION_VIDEO_SUMMARY_DATABASE_ID=<your_database_id>  # 单个数据库
    ```
 
 #### 数据库视图示例

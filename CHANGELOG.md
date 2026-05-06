@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.12] - 2026-05-06
+
+### 🔒 安全扫描修复（ClawScan + Static Analysis → Benign）
+
+**API Key 占位符替换（Static Analysis critical）**:
+- SKILL.md 中所有 API Key 示例改为 `<your_xxx_key>` 格式，不再匹配 secret pattern
+- 影响字段：`DASHSCOPE_API_KEY`、`NOTION_API_KEY`、`GROQ_API_KEY`
+
+**B 站 Cookie 安全加固（ClawScan）**:
+- `bili-login.sh` 移除 Cookie 内容预览（`head -5`），避免 session token 泄露到终端/日志
+- Cookie 存储改为临时目录（`mktemp -d`），转换完成后自动清理，不残留 skill 目录内
+- 新增 `chmod 600` 限制 Cookie 文件权限
+
+**Prompt 注入防御（ClawScan）**:
+- `prompt.json` system prompt 增加防注入指令，明确标注字幕为不可信数据
+- user prompt 模板标注「不可信数据，仅用于分析」
+
+**依赖版本锁定（ClawScan）**:
+- pip packages 锁定已知安全版本：`requests==2.31.0 oss2==2.18.4 python-dotenv==1.0.1 biliup==0.4.86`
+
+**安全文档增强（ClawScan 信息项）**:
+- SKILL.md 新增「数据流向提醒」章节，明确各外部服务的数据类型和隐私风险
+- 提醒用户避免处理含敏感信息的视频
+
+### 📦 文件变更
+
+| 文件 | 变更说明 |
+|------|----------|
+| `SKILL.md` | API Key 占位符替换 + 依赖锁定 + 安全说明增强 |
+| `scripts/bili-login.sh` | Cookie 安全加固（临时目录 + 权限限制 + 自动清理） |
+| `prompt.json` | Prompt 注入防御（版本 → 1.0.12） |
+| `CHANGELOG.md` | 本条目 |
+
+---
+
 ## [1.0.11] - 2026-05-06
 
 ### 🔒 安全加固

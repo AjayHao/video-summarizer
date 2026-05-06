@@ -5,7 +5,7 @@ analyze-subtitles-ai.py - 使用 AI 分析字幕生成结构化总结
 
 用法：python3 analyze-subtitles-ai.py <字幕文件> <元数据文件> <输出文件>
 
-版本：v1.0.11
+版本：v1.0.12
 """
 
 import sys
@@ -813,7 +813,7 @@ AI 分析暂时不可用，请稍后重试。
 ---
 
 *生成时间：{datetime.now().strftime("%Y-%m-%d")}*
-*技能版本：video-summarizer v1.0.11*
+*技能版本：video-summarizer v1.0.12*
 """
         with open(output_file, 'w', encoding='utf-8') as f:
             f.write(md_content)
