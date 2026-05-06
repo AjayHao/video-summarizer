@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.11] - 2026-05-06
+
+### 🔒 安全加固
+
+**P0 高危修复 (10 项)**:
+- Fix-1/2: `save_progress()` 和 `check_progress()` 改用环境变量传递，消除 Python heredoc 注入
+- Fix-3: 抖音元数据解析改用 stdin 管道传递 JSON
+- Fix-4: XHS 元数据解析改用环境变量传递路径
+- Fix-5: Step 5 截图时间戳提取改用环境变量传递
+- Fix-6: Step 6 封面 URL 更新改用环境变量传递
+- Fix-7: 消除 `COOKIE_ARG`/`SUBTITLE_COOKIE_ARG` word splitting 漏洞
+- Fix-10/11: 增加 URL 格式校验（协议白名单/长度限制/字符黑名单）+ `OUTPUT_DIR` 路径遍历防护
+
+**P1 中危修复 (3 项)**:
+- Fix-8: `download-audio.sh` 增加输入校验
+- Fix-9: Notion DB ID 改为环境变量传递（不再作为 CLI 参数明文）
+- Fix-12: 数值变量校验（`DURATION_SEC`/`MAX_SCREENSHOTS`）
+
+**P2 低危加固 (4 项)**:
+- Fix-13: `.env` 文件权限自动修复为 600
+- Fix-14: 清理操作限制在 `/tmp/video-summarizer/*` 范围内
+- Fix-15: Cookie 文件权限检查告警
+- Fix-16: `ERROR_LOG` 初始化时机修复 + 日志函数 `set -e` 安全
+
+**输入安全校验**:
+- 新增 `validate_url()` 函数：URL 长度限制（2048 字符）、shell 元字符黑名单、协议白名单（http/https）、平台白名单（B站/YouTube/小红书/抖音）
+- 新增 `validate_output_dir()` 函数：禁止路径遍历（`..` 检测）、系统目录写入保护（/etc、/usr、/bin 等）
+
+**Shell 安全改进**:
+- 所有 `yt-dlp` 调用中 cookies 参数从变量拼接改为直接引用 `"$COOKIES_FILE"`
+- 所有 Python heredoc 调用改用环境变量 + `os.environ` 传递
+- 日志函数 `log_info`/`log_warn`/`log_error`/`log_debug` 增加空值保护，`set -e` 下安全执行
+
+### 📝 文档修正
+
+**10 处偏差修复**:
+- 更新 Plan B 降级描述：双层 → 三层（增加 Whisper.cpp/原生保底方案）
+- 更新 Notion 推送调用方式：文档说明环境变量优先策略
+- 补充输出文件列表：`ai_result.json`、`audio.txt`、`cover_url.txt`、`screenshot_times.txt`
+- 补充 `DASHSCOPE_MODEL` 环境变量覆盖机制说明
+- 修正 `douyin_downloader.py` extract 模式描述（Groq API 音频转录）
+- 更新 README 输出目录结构示例
+- 统一版本号至 v1.0.11
+
+---
+
 ## [1.0.10] - 2026-04-14
 
 ### 🔒 安全合规优化

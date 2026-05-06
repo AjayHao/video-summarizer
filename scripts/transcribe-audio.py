@@ -8,7 +8,7 @@ transcribe-audio.py - Plan B: 语音转录字幕
 
 用法：python3 transcribe-audio.py <音频文件> [输出字幕文件]
 
-版本：v1.0.10
+版本：v1.0.11
 更新：移除硅基流动依赖，Groq API 为可选配置
 """
 
@@ -131,10 +131,19 @@ def transcribe_with_groq(audio_file: str) -> dict:
     url = "https://api.groq.com/openai/v1/audio/transcriptions"
     headers = {"Authorization": f"Bearer {GROQ_API_KEY}"}
     
-    with open(audio_file, 'rb') as f:
-        files = {"file": f}
-        data = {"model": "whisper-large-v3", "response_format": "verbose_json"}
-        response = requests.post(url, headers=headers, files=files, data=data, timeout=600)
+    try:
+        with open(audio_file, 'rb') as f:
+            files = {"file": f}
+            data = {"model": "whisper-large-v3", "response_format": "verbose_json"}
+            response = requests.post(url, headers=headers, files=files, data=data, timeout=600)
+    except requests.exceptions.Timeout:
+        return {'success': False, 'error': 'Groq API 超时'}
+    except requests.exceptions.ConnectionError as e:
+        return {'success': False, 'error': f'Groq API 连接失败：{str(e)[:200]}'}
+    except requests.exceptions.SSLError as e:
+        return {'success': False, 'error': f'Groq API SSL 错误：{str(e)[:200]}'}
+    except requests.exceptions.RequestException as e:
+        return {'success': False, 'error': f'Groq API 请求异常：{str(e)[:200]}'}
     
     if response.status_code == 200:
         result = response.json()

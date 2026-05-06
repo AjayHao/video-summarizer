@@ -6,6 +6,24 @@ set -e
 
 VIDEO_URL="$1"
 OUTPUT_FILE="${2:-/tmp/audio.mp3}"
+
+# 输入校验
+if [[ -z "$VIDEO_URL" ]]; then
+    echo "❌ 视频 URL 为空" >&2
+    exit 1
+fi
+
+if [[ ${#VIDEO_URL} -gt 2048 ]]; then
+    echo "❌ URL 过长" >&2
+    exit 1
+fi
+
+# 排除 shell 元字符
+if [[ "$VIDEO_URL" =~ [\;\|\&\(\)\{\}\`\$\<\>] ]]; then
+    echo "❌ URL 包含非法字符" >&2
+    exit 1
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # 日志级别函数
