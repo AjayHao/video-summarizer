@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
 analyze-subtitles-ai.py - 使用 AI 分析字幕生成结构化总结
-基于阿里云 DashScope API (qwen3.5-plus)
+支持多平台 LLM（OpenAI 兼容接口），通过 LLM_API_KEY + LLM_BASE_URL 配置
 
 用法：python3 analyze-subtitles-ai.py <字幕文件> <元数据文件> <输出文件>
 
-版本：v1.0.12
+版本：v1.0.13
 """
 
 import sys
@@ -15,21 +15,8 @@ import re
 from pathlib import Path
 from datetime import datetime
 
-# 读取环境变量
-from dotenv import load_dotenv
-load_dotenv(Path.home() / '.openclaw' / '.env')
-
-DASHSCOPE_API_KEY = os.getenv('DASHSCOPE_API_KEY')
-
-if not DASHSCOPE_API_KEY:
-    print("❌ 错误：缺少 DASHSCOPE_API_KEY，请检查 ~/.openclaw/.env")
-    sys.exit(1)
-
-# 使用 HTTP 直接调用（避免 OpenAI SDK 超时问题）
-import requests
-DASHSCOPE_BASE_URL = os.getenv('DASHSCOPE_BASE_URL', 'https://dashscope.aliyuncs.com/compatible-mode/v1')
-# 模型选择：qwen3.5-plus（高质量）或 qwen-turbo（快速）
-MODEL = os.getenv('DASHSCOPE_MODEL', 'qwen3.5-plus')
+# 引入多平台 LLM 客户端
+from llm_client import LLMClient
 
 
 def time_to_seconds(time_str: str) -> int:
@@ -89,8 +76,25 @@ def parse_vtt(vtt_file):
 
 
 def extract_transcript_text(subtitles):
-    """提取纯文本用于 AI 分析"""
-    return '\n'.join([sub['text'] for sub in subtitles])
+    """
+    提取带时间戳的字幕文本用于 AI 分析。
+    格式：[MM:SS] 字幕文本
+    时间戳来自 VTT 的 start 字段，毫秒部分已去除。
+    """
+    lines = []
+    for sub in subtitles:
+        start = sub['start']
+        # VTT 时间戳：HH:MM:SS.mmm 或 MM:SS.mmm
+        if start.count(':') == 2:
+            # HH:MM:SS.mmm → 保留 HH:MM:SS（去毫秒）
+            h, m, s = start.split(':')
+            s = s.split('.')[0]
+            time_str = f"{int(h):02d}:{int(m):02d}:{int(s):02d}"
+        else:
+            # MM:SS.mmm → MM:SS
+            time_str = start.split('.')[0]
+        lines.append(f"[{time_str}] {sub['text']}")
+    return '\n'.join(lines)
 
 
 def load_params() -> dict:
@@ -119,17 +123,27 @@ def load_params() -> dict:
 
 def ai_analyze(transcript: str, video_info: dict) -> dict:
     """
-    使用 AI 分析字幕内容，返回模板所需的数据结构
-    
+    使用 AI 分析字幕内容，返回模板所需的数据结构。
+
+    支持所有 OpenAI 兼容接口（DeepSeek / DashScope / OpenAI / Groq 等），
+    通过环境变量 LLM_API_KEY + LLM_BASE_URL + LLM_MODEL 配置。
+
     Returns:
-        dict: 直接匹配模板变量的数据结构
+        dict: 直接匹配模板变量的数据结构，失败返回 None
     """
-    
     # 加载参数配置
     params = load_params()
     system_prompt = params.get('system_prompt', '你是一个专业的视频内容分析专家。')
     prompt_template = params.get('user_prompt_template', '')
-    
+
+    # 字幕截断保护
+    word_count = len(transcript.split())
+    MAX_WORDS = 12000
+    if word_count > MAX_WORDS:
+        print(f"   ⚠️  字幕过长 ({word_count}字)，截断到 {MAX_WORDS}字")
+        part_size = MAX_WORDS // 2
+        transcript = transcript[:part_size] + "\n...[内容过长，已截断]...\n" + transcript[-part_size:]
+
     # 构建提示词
     prompt = prompt_template.format(
         title=video_info.get('title', 'Unknown'),
@@ -138,63 +152,19 @@ def ai_analyze(transcript: str, video_info: dict) -> dict:
         transcript=transcript[:15000]  # 限制字幕长度
     )
 
+    # ---- 初始化 LLM 客户端 ----
     try:
-        print(f"   🤖 调用 AI 分析 (模型：{MODEL})...")
-        
-        word_count = len(transcript.split())
-        MAX_WORDS = 12000
-        
-        if word_count > MAX_WORDS:
-            print(f"   ⚠️  字幕过长 ({word_count}字)，截断到 {MAX_WORDS}字")
-            part_size = MAX_WORDS // 2
-            transcript = transcript[:part_size] + "\n...[内容过长，已截断]...\n" + transcript[-part_size:]
-        
-        headers = {
-            'Authorization': f'Bearer {DASHSCOPE_API_KEY}',
-            'Content-Type': 'application/json'
-        }
-        
-        data = {
-            'model': MODEL,
-            'messages': [
-                {'role': 'system', 'content': system_prompt},
-                {'role': 'user', 'content': prompt}
-            ],
-            'stream': False
-        }
-        
-        # 重试机制：超时 + 可重试 HTTP 错误（超时 300s → 600s → 900s）
-        RETRYABLE_STATUS = {429, 500, 502, 503, 504}
-        response = None
-        for attempt in range(3):
-            try:
-                timeout = [300, 600, 900][attempt]
-                print(f"   尝试 {attempt + 1}/3 (超时：{timeout}s)...")
-                response = requests.post(
-                    f'{DASHSCOPE_BASE_URL}/chat/completions',
-                    headers=headers,
-                    json=data,
-                    timeout=timeout
-                )
-                if response.status_code == 200:
-                    break
-                if response.status_code in RETRYABLE_STATUS:
-                    print(f"   ⚠️  {response.status_code}，准备重试...")
-                    continue
-                else:
-                    print(f"   ❌ {response.status_code} - {response.text[:200]}")
-                    return None
-            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
-                print(f"   ⚠️  {type(e).__name__}，准备重试...")
-                if attempt == 2:
-                    raise
+        client = LLMClient.from_env()
+        print(f"   🤖 调用 AI 分析 ({client})")
+    except ValueError as e:
+        print(f"   ❌ LLM 客户端初始化失败：{e}")
+        return None
 
-        if response is None or response.status_code != 200:
-            if response is not None:
-                print(f"   ❌ AI 调用失败：{response.status_code} - {response.text[:200]}")
+    try:
+        ai_response = client.analyze_simple(system_prompt, prompt)
+        if not ai_response:
+            print(f"   ❌ AI 分析失败：LLM 返回空")
             return None
-
-        ai_response = response.json()['choices'][0]['message']['content']
 
         # 提取 JSON 内容
         json_match = re.search(r'```json\s*(.*?)\s*```', ai_response, re.DOTALL)
@@ -206,7 +176,11 @@ def ai_analyze(transcript: str, video_info: dict) -> dict:
         result = json.loads(json_str)
         print(f"   ✅ AI 分析完成")
         return result
-    
+
+    except json.JSONDecodeError as e:
+        print(f"   ❌ AI 返回非 JSON 格式：{e}")
+        print(f"   原始响应前 300 字：{ai_response[:300]}")
+        return None
     except Exception as e:
         print(f"   ❌ 分析异常：{str(e)}")
         return None
@@ -673,7 +647,7 @@ def main():
     output_file = sys.argv[3]
     
     print("=" * 50)
-    print("🧠 AI 字幕分析器 v1.0.11")
+    print("🧠 AI 字幕分析器 v1.0.13")
     print("=" * 50)
     print()
     
@@ -813,7 +787,7 @@ AI 分析暂时不可用，请稍后重试。
 ---
 
 *生成时间：{datetime.now().strftime("%Y-%m-%d")}*
-*技能版本：video-summarizer v1.0.12*
+*技能版本：video-summarizer v1.0.13*
 """
         with open(output_file, 'w', encoding='utf-8') as f:
             f.write(md_content)

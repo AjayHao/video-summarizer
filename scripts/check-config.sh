@@ -1,6 +1,7 @@
 #!/bin/bash
 # check-config.sh - 检查 video-summarizer 配置是否就绪
 # 用法：./check-config.sh
+# 版本：v1.0.13
 
 ENV_FILE="$HOME/.openclaw/.env"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -50,13 +51,44 @@ check_py "oss2" "oss2"
 check_py "dotenv" "python-dotenv"
 
 echo ""
-echo "=== 必需配置 ==="
+echo "=== LLM AI 分析配置 ==="
 CONFIG_OK=true
+LLM_CONFIGURED=false
+
+LLM_API_KEY=$(grep "^LLM_API_KEY=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2- | tr -d '"' | tr -d "'")
+LLM_BASE_URL=$(grep "^LLM_BASE_URL=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2- | tr -d '"' | tr -d "'")
+LLM_MODEL=$(grep "^LLM_MODEL=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2- | tr -d '"' | tr -d "'")
+
+MISSING_VARS=""
+[[ -z "$LLM_API_KEY" ]] && MISSING_VARS="$MISSING_VARS LLM_API_KEY"
+[[ -z "$LLM_BASE_URL" ]] && MISSING_VARS="$MISSING_VARS LLM_BASE_URL"
+[[ -z "$LLM_MODEL" ]] && MISSING_VARS="$MISSING_VARS LLM_MODEL"
+
+if [[ -z "$MISSING_VARS" ]]; then
+    echo "✅ LLM_API_KEY（已配置）"
+    echo "✅ LLM_BASE_URL: $LLM_BASE_URL"
+    echo "✅ LLM_MODEL: $LLM_MODEL"
+    LLM_CONFIGURED=true
+    PASS=$((PASS + 3))
+else
+    echo "❌ LLM 配置不完整，缺少：$MISSING_VARS"
+    echo "   └─ 请在 ~/.openclaw/.env 中配置："
+    echo "      LLM_API_KEY=your_api_key"
+    echo "      LLM_BASE_URL=https://api.deepseek.com"
+    echo "      LLM_MODEL=deepseek-v4-pro"
+    FAIL=$((FAIL + 1))
+fi
+
+if [[ "$LLM_CONFIGURED" != "true" ]]; then
+    CONFIG_OK=false
+fi
+
+echo ""
+echo "=== OSS 图床配置 ==="
 check_env "ALIYUN_OSS_AK" "阿里云 OSS AccessKey" || CONFIG_OK=false
 check_env "ALIYUN_OSS_SK" "阿里云 OSS Secret" || CONFIG_OK=false
 check_env "ALIYUN_OSS_BUCKET_ID" "阿里云 OSS Bucket" || CONFIG_OK=false
 check_env "ALIYUN_OSS_ENDPOINT" "阿里云 OSS Endpoint" || CONFIG_OK=false
-check_env "DASHSCOPE_API_KEY" "DashScope API Key" || CONFIG_OK=false
 
 echo ""
 echo "=== 可选配置 ==="
