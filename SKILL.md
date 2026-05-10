@@ -6,7 +6,7 @@ metadata:
     "openclaw":
       {
         "emoji": "🎬",
-        "requires": { "bins": ["ffmpeg (>=6.1)", "yt-dlp (>=2026.03.17)"], "env": ["DASHSCOPE_API_KEY", "ALIYUN_OSS_AK", "ALIYUN_OSS_SK", "ALIYUN_OSS_BUCKET_ID", "ALIYUN_OSS_ENDPOINT"] },
+        "requires": { "bins": ["ffmpeg (>=6.1)", "yt-dlp (>=2026.03.17)"], "env": ["LLM_API_KEY", "LLM_BASE_URL", "ALIYUN_OSS_AK", "ALIYUN_OSS_SK", "ALIYUN_OSS_BUCKET_ID", "ALIYUN_OSS_ENDPOINT"] },
         "install":
           [
             {
@@ -38,8 +38,8 @@ metadata:
 
 将 B 站/YouTube/小红书/抖音视频转换为结构化 Notion 总结文档，自动上传截图，一键推送 Notion。
 
-**版本**: 1.0.12  
-**发布**: 2026-05-06  
+**版本**: 1.0.13  
+**发布**: 2026-05-10  
 **许可**: MIT  
 **作者**: Ajay Hao
 
@@ -58,7 +58,7 @@ metadata:
 ### 核心能力
 
 - 🎬 **多平台支持**: B 站、YouTube、小红书、抖音
-- 📝 **智能分析**: AI 提取关键概念、核心要点、注意事项
+- 📝 **智能分析**: AI（平台可配置）提取关键概念、核心要点、注意事项
 - 📸 **截图嵌入**: 基于 AI 分析结果自动生成关键帧截图
 - ☁️ **图床集成**: 阿里云 OSS 自动上传，永久链接
 - 🚀 **一键推送**: 自动推送 Notion 数据库
@@ -87,7 +87,7 @@ metadata:
 
 | 服务 | 域名 | 用途 | 传输数据 |
 |------|------|------|----------|
-| DashScope | `dashscope.aliyuncs.com` | AI 分析 | 字幕文本、元数据 |
+| LLM 平台 (可配置) | 通过 LLM_BASE_URL 指定 | AI 分析 | 字幕文本、元数据 |
 | 阿里云 OSS | `oss-cn-shanghai.aliyuncs.com` | 图床上传 | 截图、封面图 |
 | Groq | `api.groq.com` | 备用转录（可选，需代理） | 音频片段 |
 | Bilibili | `bilibili.com` | 视频下载/字幕 | 无（仅下载） |
@@ -95,6 +95,7 @@ metadata:
 | 抖音 | `douyin.com` / `iesdouyin.com` | 视频下载 | 无（仅下载） |
 
 **说明**: 
+- LLM 平台由用户通过 `LLM_BASE_URL` 控制，支持任意 OpenAI 兼容接口（DeepSeek / DashScope / OpenAI / Groq 等）
 - Groq API 为可选加速方案，未配置时自动降级到本地 Faster-Whisper
 - 抖音专用下载器 `douyin_downloader.py` 已移除硅基流动依赖，使用与主流程一致的 Groq API + 本地降级方案
 
@@ -106,7 +107,7 @@ metadata:
 
 ### ⚠️ 数据流向提醒
 
-- **DashScope**: 字幕文本和视频元数据会发送至阿里云 DashScope API（AI 分析必需），请勿处理包含敏感信息的视频
+- **LLM 平台（可配置）**: 字幕文本和视频元数据会发送至用户配置的 LLM 服务（通过 `LLM_BASE_URL` 指定），请勿处理包含敏感信息的视频
 - **Groq（可选）**: 音频片段会发送至 Groq API（加速转录），未配置时自动降级为本地 Faster-Whisper
 - **阿里云 OSS**: 截图和封面图上传至 OSS Bucket，建议配置为专用 Bucket 并设置为私有读/写
 - **Notion**: 总结结果推送至 Notion 数据库，确保 Integration 仅授予目标数据库权限
@@ -225,14 +226,21 @@ cat /tmp/video-summarizer-*/summary.md
 ```bash
 # ========== 必需配置 ==========
 
+# LLM AI 分析（OpenAI 兼容接口，三者缺一不可）
+LLM_API_KEY=sk-your-api-key
+LLM_BASE_URL=https://api.deepseek.com
+LLM_MODEL=deepseek-v4-pro
+
+# 其他平台示例：
+# LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1  # DashScope
+# LLM_BASE_URL=https://api.openai.com/v1                          # OpenAI
+# LLM_BASE_URL=https://api.groq.com/openai/v1                     # Groq
+
 # 阿里云 OSS 图床
 ALIYUN_OSS_AK=your_access_key_id
 ALIYUN_OSS_SK=your_access_key_secret
 ALIYUN_OSS_BUCKET_ID=your_bucket_name
 ALIYUN_OSS_ENDPOINT=oss-cn-shanghai.aliyuncs.com
-
-# AI 分析（DashScope API）
-DASHSCOPE_API_KEY=<your_dashscope_api_key>
 
 # ========== 可选配置 ==========
 
@@ -317,7 +325,7 @@ Step 2: 字幕   Step 3: 视频下载  ← 并行执行
               ↓
 Step 4: 文本提取 (VTT → TXT / Plan B 转录)
        ↓
-Step 5: AI 分析 (DashScope API - qwen3.5-plus，可通过 `DASHSCOPE_MODEL` 环境变量覆盖)
+Step 5: AI 分析 (OpenAI 兼容接口，通过 LLM_API_KEY + LLM_BASE_URL + LLM_MODEL 配置)
        ↓
 Step 6: 截图生成 (ffmpeg, 基于 AI 时间戳)
        ↓
@@ -333,7 +341,7 @@ Step 9: Notion 推送 (可选)
 | 层级 | 技术 |
 |------|------|
 | 编排层 | Bash (video-summarize.sh) |
-| 分析层 | Python + DashScope API (qwen3.5-plus，可通过 `DASHSCOPE_MODEL` 环境变量覆盖) |
+| 分析层 | Python + OpenAI 兼容 LLM API |
 | 转录层 | Groq API (可选) / Faster-Whisper (本地) |
 | 工具层 | yt-dlp (>=2026.03.17), ffmpeg (>=6.1), oss2, requests |
 

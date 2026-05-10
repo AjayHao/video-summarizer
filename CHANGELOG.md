@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.13] - 2026-05-10
+
+### 🏗️ LLM 多平台抽象层
+
+- **新增 `llm_client.py`**：OpenAI 兼容接口多平台 LLM 客户端，解除平台依赖
+- **统一配置**：移除 `DASHSCOPE_API_KEY` 等平台专属 Key 的自动检测与降级逻辑，统一使用 `LLM_API_KEY` + `LLM_BASE_URL` + `LLM_MODEL` 三个环境变量
+- **支持平台**：DeepSeek（`base_url=https://api.deepseek.com`）、DashScope、OpenAI、Groq 等任意 OpenAI 兼容接口
+- **重构 `analyze-subtitles-ai.py`**：移除 DashScope 硬编码，LLM 调用逻辑精简 50%+
+
+### 🐛 修复
+
+- **时间戳丢失**：`extract_transcript_text()` 改为保留字幕时间戳 `[MM:SS]` 前缀，AI 能提取真实时间点（不再全部 00:00）
+- **专有名词准确性**：`system_prompt` 增加专有名词必须与字幕原文一致的约束（如 Claude Code 不再被改写为 cloud code）
+
+### 📝 文档与配置同步
+
+- `SKILL.md`：架构图、配置说明、安全声明全部更新，移除 DashScope 专属引用
+- `check-config.sh`：简化为仅检查 `LLM_API_KEY` + `LLM_BASE_URL` + `LLM_MODEL`
+- `prompt.json`：新增平台配置示例、时间戳提取指令、专有名词准确性指令
+- `templates/summary.md`：版本号同步 v1.0.13
+- 全局版本号统一：所有脚本（含 `transcribe-audio.py`、`push-to-notion.py`、`upload-to-oss.py`）同步至 v1.0.13
+
+---
+
 ## [1.0.12] - 2026-05-06
 
 ### 🔒 安全扫描修复（ClawScan + Static Analysis → Benign）
