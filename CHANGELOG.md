@@ -7,6 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.0] - 2026-06-22
+
+### 🏗️ 架构优化
+
+- **品牌/路径去硬编码**：所有脚本优先读取 `~/.hermes/.env`，fallback `~/.openclaw/.env`，适配 Hermes Agent 平台
+- **文档拆分**：SKILL.md 从 588 行精简至 ~290 行（-51%），安全/平台/故障排查拆分到 `references/`
+- **代码重构**：`push-to-notion.py` 四平台分支 → 4 个公共函数（`_extract_title_common` / `_extract_note` / `_extract_tags` / `_extract_author`），1010→842 行（-17%）
+
+### 🪟 Windows 兼容
+
+- **临时路径**：`upload-to-oss.py` 使用 `tempfile.gettempdir()` 替代硬编码 `/tmp/`
+- **安装指引**：README 新增 Windows Chocolatey 安装命令
+- **输出目录**：`video-summarize.sh` 在 Git Bash/MSYS 下自动使用 `%TEMP%`
+
+### 📝 文档一致性
+
+- **README.md** 更新至 v1.1.0，环境变量示例从 `DASHSCOPE_API_KEY` 改为 `LLM_API_KEY + LLM_BASE_URL + LLM_MODEL`
+- **templates/README.md** 变量名表与实际模板完全对齐
+- **全项目版本号**统一至 v1.1.0
+
+### 📓 Obsidian 本地存储
+
+- **新增 `push-to-obsidian.py`**：将视频总结写入 Obsidian Vault，生成 YAML frontmatter（tags/platform/author/duration/source_url/date/created）
+- **存储结构**：`1-输入-收件箱/视频总结/{平台}_{视频ID}_{日期}.md` + `attachments/` 子目录
+- **`status: inbox`**：frontmatter 标记待审核，方便 Obsidian 筛选
+- **默认仅 Obsidian**：零参数即推本地，本地优先、零外部依赖
+- **高级用法**：`--notion` 双存档；`--no-obsidian` 仅抓取不存档
+- **`--no-obsidian`** / **`--no-notion`** 可分别禁用
+- **`--push`** 保留兼容（等同于 `--notion`）
+- **`check-config.sh`** 新增 Obsidian Vault 路径检查
+
+### 📦 文件变更
+
+| 文件 | 变更 |
+|------|------|
+| `scripts/push-to-obsidian.py` | 🆕 Obsidian Vault 写入（~215 行） |
+| `SKILL.md` | 路线图 → Obsidian 功能文档 |
+| `README.md` | 重写 CLI 选项表 + 环境变量 |
+| `scripts/video-summarize.sh` | 路径 fallback + Windows TEMP |
+| `scripts/video-summarize.sh` | Step 10 Obsidian + 推送逻辑重构 |
+| `scripts/push-to-notion.py` | 1010→842 行，4 函数重构 |
+| `scripts/check-config.sh` | 路径 fallback + Obsidian 检查 |
+| `scripts/llm_client.py` | 路径 fallback |
+| `scripts/upload-to-oss.py` | 路径 fallback + `tempfile` |
+| `scripts/transcribe-audio.py` | 路径 fallback |
+| `scripts/analyze-subtitles-ai.py` | format_tags 优化 |
+| `templates/README.md` | 变量表对齐 |
+| `templates/summary.md` | 版本号 |
+| `prompt.json` | 版本号 |
+| `CHANGELOG.md` | 本条目 |
+| `references/platforms.md` | 🆕 四平台详情 |
+| `references/security.md` | 🆕 安全与隐私 |
+| `references/troubleshooting.md` | 🆕 故障排查 |
+
+**总计**: 18 files changed, 5 new files
+
+---
+
 ## [1.0.13] - 2026-05-10
 
 ### 🏗️ LLM 多平台抽象层

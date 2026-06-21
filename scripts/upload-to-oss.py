@@ -3,7 +3,7 @@
 阿里云 OSS 图床上传脚本
 用于 video-summarizer 技能，自动上传截图到阿里云 OSS
 
-版本：v1.0.13
+版本：v1.1.0
 
 路径规范：
 /screenshots/<平台名>/<视频 ID>_<时间戳>/<截图文件>
@@ -27,9 +27,12 @@ import json
 import argparse
 from pathlib import Path
 
-# 读取环境变量
+# 读取环境变量（优先 ~/.hermes/.env，fallback ~/.openclaw/.env）
 from dotenv import load_dotenv
-load_dotenv(Path.home() / '.openclaw' / '.env')
+env_path = Path.home() / '.hermes' / '.env'
+if not env_path.exists():
+    env_path = Path.home() / '.openclaw' / '.env'
+load_dotenv(env_path)
 
 # 阿里云 OSS 配置
 ALIYUN_OSS_AK = os.getenv('ALIYUN_OSS_AK')
@@ -38,7 +41,7 @@ ALIYUN_OSS_BUCKET = os.getenv('ALIYUN_OSS_BUCKET_ID')
 ALIYUN_OSS_ENDPOINT = os.getenv('ALIYUN_OSS_ENDPOINT')
 
 if not all([ALIYUN_OSS_AK, ALIYUN_OSS_SK, ALIYUN_OSS_BUCKET]):
-    print("❌ 错误：缺少阿里云 OSS 配置，请检查 ~/.openclaw/.env", file=sys.stderr)
+    print("❌ 错误：缺少阿里云 OSS 配置，请检查 ~/.hermes/.env 或 ~/.openclaw/.env", file=sys.stderr)
     sys.exit(1)
 
 import oss2
@@ -309,8 +312,9 @@ def upload_thumbnail(metadata_file: str, output_file: str = None, public: bool =
         if response.status_code != 200:
             return {'success': False, 'error': f'HTTP {response.status_code}'}
         
-        # 保存到临时文件
-        temp_file = '/tmp/thumbnail_temp.jpg'
+        # 保存到临时文件（跨平台兼容）
+        import tempfile
+        temp_file = os.path.join(tempfile.gettempdir(), 'thumbnail_temp.jpg')
         with open(temp_file, 'wb') as f:
             for chunk in response.iter_content(chunk_size=8192):
                 f.write(chunk)

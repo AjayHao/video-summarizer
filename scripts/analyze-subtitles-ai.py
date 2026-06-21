@@ -5,7 +5,7 @@ analyze-subtitles-ai.py - 使用 AI 分析字幕生成结构化总结
 
 用法：python3 analyze-subtitles-ai.py <字幕文件> <元数据文件> <输出文件>
 
-版本：v1.0.13
+版本：v1.1.0
 """
 
 import sys
@@ -214,7 +214,7 @@ def load_template() -> str:
 
 def format_tags(tags: list) -> str:
     """格式化标签为模板格式：`标签 1` `标签 2` `标签 3` `标签 4` `标签 5`"""
-    # 确保正好 5 个标签
+    # 确保正好 5 个标签（只在不足时补默认值，不覆盖已有标签）
     default_tags = ["视频总结", "AI 分析", "教程", "技巧", "知识分享"]
     while len(tags) < 5:
         for t in default_tags:
@@ -222,8 +222,7 @@ def format_tags(tags: list) -> str:
                 tags.append(t)
                 if len(tags) >= 5:
                     break
-    tags = tags[:5]
-    return ' '.join([f"`{tag}`" for tag in tags])
+    return ' '.join([f"`{tag}`" for tag in tags[:5]])
 
 
 def format_key_points(key_points: list) -> str:
@@ -647,7 +646,7 @@ def main():
     output_file = sys.argv[3]
     
     print("=" * 50)
-    print("🧠 AI 字幕分析器 v1.0.13")
+    print("🧠 AI 字幕分析器 v1.1.0")
     print("=" * 50)
     print()
     
@@ -787,7 +786,7 @@ AI 分析暂时不可用，请稍后重试。
 ---
 
 *生成时间：{datetime.now().strftime("%Y-%m-%d")}*
-*技能版本：video-summarizer v1.0.13*
+*技能版本：video-summarizer v1.1.0*
 """
         with open(output_file, 'w', encoding='utf-8') as f:
             f.write(md_content)

@@ -2,8 +2,8 @@
 
 🎬 将 B 站/YouTube/小红书/抖音视频转换为结构化 Notion 总结
 
-**版本**: 1.0.12  
-**发布**: 2026-05-06  
+**版本**: 1.1.0  
+**发布**: 2026-06-22  
 **许可**: MIT
 
 ---
@@ -16,6 +16,7 @@
 # 系统依赖（最低版本：ffmpeg >= 6.1, yt-dlp >= 2026.03.17）
 brew install ffmpeg yt-dlp  # macOS
 apt install ffmpeg yt-dlp   # Ubuntu/Debian
+choco install ffmpeg yt-dlp # Windows (Chocolatey)
 
 # 验证版本
 ffmpeg -version    # 应 >= 6.1
@@ -27,41 +28,53 @@ pip3 install requests oss2 python-dotenv
 
 ### 第二步：配置 API Keys
 
-编辑 `~/.openclaw/.env`：
+编辑 `~/.hermes/.env`（或 `~/.openclaw/.env`，兼容旧版）：
 
 ```bash
+# 必需 - LLM AI 分析（OpenAI 兼容接口）
+LLM_API_KEY=your_api_key
+LLM_BASE_URL=https://api.deepseek.com
+LLM_MODEL=deepseek-v4-pro
+
 # 必需 - 阿里云 OSS 图床
 ALIYUN_OSS_AK=your_access_key_id
 ALIYUN_OSS_SK=your_access_key_secret
 ALIYUN_OSS_BUCKET_ID=your_bucket_name
 ALIYUN_OSS_ENDPOINT=oss-cn-shanghai.aliyuncs.com
 
-# 必需 - AI 分析
-DASHSCOPE_API_KEY=your_dashscope_api_key
+# 可选 - Obsidian Vault 本地存储（推荐配置，默认开启）
+# macOS:  /Users/name/ObsidianVault
+# Windows: D:\ObsidianVault
+# Linux:   /home/name/ObsidianVault
+OBSIDIAN_VAULT_PATH=/path/to/your/vault
 
-# 可选 - Notion 自动推送（单个数据库）
+# 可选 - Notion 自动推送（--notion 触发）
 NOTION_API_KEY=your_notion_api_key
 NOTION_VIDEO_SUMMARY_DATABASE_ID=your_database_id
 
 # 可选 - 语音转录加速（Groq API）
 # 国内需代理访问，未配置时自动使用本地 Faster-Whisper
-# 不配置此项不影响使用
 GROQ_API_KEY=your_groq_api_key
 ```
 
 ### 第三步：处理视频
 
-```bash
-cd ~/.openclaw/skills/video-summarizer/scripts
+四种场景，一条命令：
 
-# 基础用法
+```bash
+cd scripts
+
+# 🏠 仅 Obsidian（推荐）—— 零参数，零外部依赖
 ./video-summarize.sh "视频 URL"
 
-# 指定输出目录
-./video-summarize.sh "视频 URL" /tmp/output
+# ☁️ 仅 Notion
+./video-summarize.sh "视频 URL" --no-obsidian --notion
 
-# 自动推送到 Notion
-./video-summarize.sh "视频 URL" --push
+# ☁️☁️ Obsidian + Notion 双存档
+./video-summarize.sh "视频 URL" --notion
+
+# 🔍 仅抓取，会话中输出 Markdown
+./video-summarize.sh "视频 URL" --no-obsidian
 
 # 查看详细日志
 ./video-summarize.sh "视频 URL" --verbose
@@ -77,6 +90,9 @@ cd ~/.openclaw/skills/video-summarizer/scripts
 ├── screenshot_urls.txt     # 🔗 截图链接
 ├── metadata.json           # 📊 视频元数据
 ├── transcript.txt          # 📄 纯文本字幕
+├── audio.txt               # 🎤 语音转录原始文本（Plan B 时）
+├── cover_url.txt           # ☁️ 封面 OSS 上传结果
+├── screenshot_times.txt    # ⏱️ 截图时间戳记录
 ├── screenshots/            # 📸 截图原图
 └── *.log                   # 📋 日志文件
 
@@ -128,7 +144,10 @@ cat output/summary.md
 |------|------|------|
 | `--verbose`, `-v` | 详细日志 | 关闭 |
 | `--keep-video` | 保留视频/音频 | 清理 |
-| `--push` | 自动推送 Notion | 手动 |
+| `--obsidian` | 推送到 Obsidian Vault | **开启** |
+| `--no-obsidian` | 禁用 Obsidian | - |
+| `--notion` | 推送到 Notion | 关闭 |
+| `--no-notion` | 禁用 Notion | - |
 | `--resume` | 断点续跑 | 从头开始 |
 
 ---
@@ -160,7 +179,7 @@ echo $GROQ_API_KEY
 更新 API Key：
 
 ```bash
-# 编辑 ~/.openclaw/.env
+# 编辑 ~/.hermes/.env 或 ~/.openclaw/.env
 NOTION_API_KEY=your_new_key
 ```
 

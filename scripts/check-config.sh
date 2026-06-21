@@ -1,9 +1,16 @@
 #!/bin/bash
 # check-config.sh - 检查 video-summarizer 配置是否就绪
 # 用法：./check-config.sh
-# 版本：v1.0.13
+# 版本：v1.1.0
 
-ENV_FILE="$HOME/.openclaw/.env"
+# 环境文件路径（优先 ~/.hermes/.env，fallback ~/.openclaw/.env）
+if [ -f "$HOME/.hermes/.env" ]; then
+    ENV_FILE="$HOME/.hermes/.env"
+elif [ -f "$HOME/.openclaw/.env" ]; then
+    ENV_FILE="$HOME/.openclaw/.env"
+else
+    ENV_FILE="$HOME/.hermes/.env"
+fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 PASS=0
@@ -72,7 +79,7 @@ if [[ -z "$MISSING_VARS" ]]; then
     PASS=$((PASS + 3))
 else
     echo "❌ LLM 配置不完整，缺少：$MISSING_VARS"
-    echo "   └─ 请在 ~/.openclaw/.env 中配置："
+    echo "   └─ 请在 ~/.hermes/.env 或 ~/.openclaw/.env 中配置："
     echo "      LLM_API_KEY=your_api_key"
     echo "      LLM_BASE_URL=https://api.deepseek.com"
     echo "      LLM_MODEL=deepseek-v4-pro"
@@ -99,6 +106,21 @@ if grep -q "^GROQ_API_KEY=" "$ENV_FILE" 2>/dev/null; then
 else
     echo "⚠️  Groq API Key (可选)"
     echo "   └─ Plan B 需本地 Whisper (pip install openai-whisper)"
+fi
+
+# Obsidian Vault 检查（默认推荐配置）
+OBSIDIAN_PATH=$(grep "^OBSIDIAN_VAULT_PATH=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2- | tr -d '"' | tr -d "'")
+if [[ -n "$OBSIDIAN_PATH" ]]; then
+    if [[ -d "$OBSIDIAN_PATH" ]]; then
+        echo "✅ Obsidian Vault ($OBSIDIAN_PATH)"
+        echo "   └─ 本地存储可用（默认开启，--no-obsidian 禁用）"
+        PASS=$((PASS + 1))
+    else
+        echo "⚠️  Obsidian Vault 路径不存在：$OBSIDIAN_PATH"
+    fi
+else
+    echo "⚠️  Obsidian Vault (推荐配置)"
+    echo "   └─ 在 .env 中添加 OBSIDIAN_VAULT_PATH=<你的Vault路径>"
 fi
 
 if grep -q "^NOTION_API_KEY=" "$ENV_FILE" 2>/dev/null; then
@@ -166,7 +188,7 @@ else
     echo "❌ 配置不完整，请修复上方标 ❌ 的项目"
     echo ""
     echo "修复建议:"
-    echo "  1. 编辑配置文件：~/.openclaw/.env"
+    echo "  1. 编辑配置文件：~/.hermes/.env 或 ~/.openclaw/.env"
     echo "  2. 安装缺失依赖：pip3 install requests oss2 python-dotenv"
     echo "  3. 扫码登录：$SCRIPT_DIR/bili-login.sh"
     echo "  4. 重新运行检查：$SCRIPT_DIR/check-config.sh"

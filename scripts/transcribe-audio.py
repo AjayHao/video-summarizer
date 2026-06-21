@@ -8,7 +8,7 @@ transcribe-audio.py - Plan B: 语音转录字幕
 
 用法：python3 transcribe-audio.py <音频文件> [输出字幕文件]
 
-版本：v1.0.13
+版本：v1.1.0
 更新：移除硅基流动依赖，Groq API 为可选配置
 """
 
@@ -19,7 +19,10 @@ import subprocess
 from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv(Path.home() / '.openclaw' / '.env')
+env_path = Path.home() / '.hermes' / '.env'
+if not env_path.exists():
+    env_path = Path.home() / '.openclaw' / '.env'
+load_dotenv(env_path)
 
 # 配置
 GROQ_API_KEY = os.getenv('GROQ_API_KEY')

@@ -3,7 +3,7 @@
 push-to-notion.py - 将视频总结推送到 Notion
 用法：python3 push-to-notion.py <summary.md> [Notion Database ID]
 
-版本：v1.0.13
+版本：v1.1.0
 """
 
 import sys
@@ -15,8 +15,11 @@ from pathlib import Path
 from datetime import datetime
 from dotenv import load_dotenv
 
-# 读取环境变量
-load_dotenv(Path.home() / '.openclaw' / '.env')
+# 读取环境变量（优先 ~/.hermes/.env，fallback ~/.openclaw/.env）
+env_path = Path.home() / '.hermes' / '.env'
+if not env_path.exists():
+    env_path = Path.home() / '.openclaw' / '.env'
+load_dotenv(env_path)
 
 NOTION_API_KEY = os.getenv('NOTION_API_KEY')
 NOTION_DATABASE_ID = os.getenv('NOTION_VIDEO_SUMMARY_DATABASE_ID')
@@ -25,7 +28,7 @@ if not NOTION_API_KEY:
     print("❌ 错误：缺少 NOTION_API_KEY")
     print("说明：Notion 推送为可选功能，仅在 --push 模式时需要")
     print("解决方案:")
-    print("  1. 配置环境变量：在 ~/.openclaw/.env 中添加 NOTION_API_KEY")
+    print("  1. 配置环境变量：在 ~/.hermes/.env 或 ~/.openclaw/.env 中添加 NOTION_API_KEY")
     print("  2. 或者不使用 --push 参数，手动处理 Markdown 文件")
     print("  3. 获取 Notion API Key: https://www.notion.so/my-integrations")
     sys.exit(1)
@@ -39,12 +42,181 @@ HEADERS = {
 }
 
 
+def _extract_title_common(content: str, source: str) -> str:
+    """通用标题提取 + 平台特定清理"""
+    title_match = re.search(r'^#\s+(.+)$', content, re.MULTILINE)
+    raw_title = title_match.group(1).strip() if title_match else "视频总结"
+
+    if source == 'Bilibili':
+        title = re.sub(r'#[A-Za-z0-9\u4e00-\u9fa5]+(?:\s+[A-Za-z0-9\u4e00-\u9fa5]+)*', '', raw_title)
+        title = ' '.join(title.split()).strip()
+    elif source in ('抖音', '小红书'):
+        title = re.sub(r'#[^\s#]+', '', raw_title).strip()
+    elif source == 'YouTube':
+        title = re.sub(r'#[A-Za-z0-9]+', '', raw_title).strip()
+    else:
+        title = raw_title
+
+    # 统一截断
+    if len(title) > 40:
+        if source == 'Bilibili' and '【' in title:
+            brackets = re.findall(r'[【](.*?)[】]', title)
+            main_title = re.split(r'[【]', title)[0].strip()
+            if main_title and brackets:
+                main_clauses = re.split(r'[!!！]', main_title)
+                short_main = main_clauses[0].strip()
+                short_main = re.split(r'[，,]', short_main)[0] if len(short_main) > 25 else short_main
+                title = f"{short_main}[{brackets[0]}]..."
+            else:
+                title = title[:30] + '...'
+        elif source == 'Bilibili':
+            clauses = re.split(r'[!!！，,]', title)
+            title = (clauses[0] + '，' + clauses[1] + '...') if len(clauses) >= 2 else title[:30] + '...'
+        else:
+            title = title[:37] + '...'
+    return title
+
+
+def _extract_note(content: str) -> str:
+    """提取 Note 概述（所有平台通用）"""
+    note_match = re.search(r'## 📝 Note\n\n(.*?)(?=\n---|\n##)', content, re.DOTALL)
+    return note_match.group(1).strip() if note_match else ""
+
+
+def _extract_tags(metadata: dict, content: str, source: str) -> list:
+    """三层标签提取策略，最多 5 个"""
+    seen = set()
+    tags = []
+
+    # 层1：metadata.tags（平台原始标签）
+    meta_tags = metadata.get('tags', [])
+    if meta_tags:
+        for t in meta_tags:
+            if 2 <= len(t) <= 15 and t.lower() not in seen:
+                seen.add(t.lower())
+                tags.append(t)
+                if len(tags) >= 5:
+                    return tags
+
+    # 层2：平台特定来源
+    if source == 'Bilibili' and len(tags) < 5:
+        # 从关键概念表格提取
+        concepts_match = re.search(r'## 📚 关键概念\n\n(.*?)(?=\n---|\n##)', content, re.DOTALL)
+        if concepts_match:
+            for term in re.findall(r'\|\s*\*\*([^*]+)\*\*\s*\|', concepts_match.group(1)):
+                term = term.strip()
+                if 2 <= len(term) <= 15 and term.lower() not in seen:
+                    seen.add(term.lower())
+                    tags.append(term)
+                    if len(tags) >= 5:
+                        break
+        # 从核心要点标题提取
+        if len(tags) < 5:
+            generic_words = {'问题', '方法', '技巧', '总结', '分析', '介绍', '说明', '如何', '什么'}
+            points_match = re.search(r'## 🎯 核心要点\n\n(.*?)(?=\n---|\n##)', content, re.DOTALL)
+            if points_match:
+                for title_text in re.findall(r'\*\*[🎯💡🚀⭐✅🔑📌📝🎬📊🛠️💻📚]\s*([^*]+)\*\*', points_match.group(1)):
+                    for word in re.split(r'[\s,，.。:：!！?？]+', title_text):
+                        word = word.strip()
+                        if (2 <= len(word) <= 15 and word.lower() not in seen
+                                and word not in generic_words and not re.match(r'^[\d]+$', word)):
+                            seen.add(word.lower())
+                            tags.append(word)
+                            if len(tags) >= 5:
+                                break
+
+    elif source == '抖音' and len(tags) < 5:
+        # Markdown Tags 行
+        tags_match = re.search(r'\*\*Tags:\*\*\s*(.+)$', content, re.MULTILINE)
+        if tags_match:
+            for t in re.findall(r'`([^`]+)`', tags_match.group(1)):
+                if 2 <= len(t) <= 15 and t.lower() not in seen:
+                    seen.add(t.lower())
+                    tags.append(t)
+        # video_desc
+        if len(tags) < 5:
+            video_desc = metadata.get('video_desc', '')
+            for t in re.findall(r'#([^\s#]+)', video_desc):
+                if 2 <= len(t) <= 15 and t.lower() not in seen:
+                    seen.add(t.lower())
+                    tags.append(t)
+                    if len(tags) >= 5:
+                        break
+
+    elif source == '小红书' and len(tags) < 5:
+        desc = metadata.get('desc', '')
+        for t in re.findall(r'#([^\s#]+)', desc):
+            if 2 <= len(t) <= 15 and t.lower() not in seen:
+                seen.add(t.lower())
+                tags.append(t)
+                if len(tags) >= 5:
+                    break
+
+    elif source == 'YouTube' and len(tags) < 5:
+        # categories
+        for c in metadata.get('categories', []):
+            if 2 <= len(c) <= 15 and c.lower() not in seen:
+                seen.add(c.lower())
+                tags.append(c)
+                if len(tags) >= 5:
+                    break
+        # 关键概念
+        if len(tags) < 5:
+            concepts_match = re.search(r'## 📚 关键概念\n\n(.*?)(?=\n---|\n##)', content, re.DOTALL)
+            if concepts_match:
+                for term in re.findall(r'\|\s*\*\*([^*]+)\*\*\s*\|', concepts_match.group(1)):
+                    term = term.strip()
+                    if 2 <= len(term) <= 15 and term.lower() not in seen:
+                        seen.add(term.lower())
+                        tags.append(term)
+                        if len(tags) >= 5:
+                            break
+
+    # 层3：默认值补齐
+    default_tags = ["视频总结", "AI 分析", "教程", "技巧", "知识分享"]
+    while len(tags) < 5:
+        for t in default_tags:
+            if t not in tags:
+                tags.append(t)
+                if len(tags) >= 5:
+                    break
+    return tags[:5]
+
+
+def _extract_author(content: str, metadata: dict, source: str) -> str:
+    """提取作者名称"""
+    # Markdown **Author:** 或 **UP 主:**
+    for pattern in [r'\*\*Author:\*\*\s*(.+)$', r'\*\*UP 主:\*\*\s*(.+)$']:
+        match = re.search(pattern, content, re.MULTILINE)
+        if match:
+            author = match.group(1).strip()
+            if author and author != 'N/A':
+                return author
+
+    # metadata fallback
+    author = metadata.get('uploader', '') or metadata.get('uploader_id', '')
+    if author and re.match(r'^[0-9a-f]{16,}$', author, re.IGNORECASE):
+        return '小红书用户' if source == '小红书' else '抖音用户'
+    return author or (source if source != 'Unknown' else '')
+
+
+def _extract_cover(content: str, metadata: dict) -> str:
+    """提取封面 URL：Markdown 图片 > metadata.thumbnail"""
+    # Markdown 封面图
+    cover_match = re.search(r'!\[视频封面\]\(([^)]+)\)', content)
+    if cover_match:
+        return cover_match.group(1).strip()
+    # 内容中第一张图片
+    for m in re.findall(r'!\[[^\]]+\]\((https?://[^)]+)\)', content):
+        return m.strip()
+    return metadata.get('thumbnail', '')
+
+
 def parse_markdown(md_file):
     """解析 Markdown 文件，提取关键信息"""
     md_dir = Path(md_file).parent
     metadata_file = md_dir / "metadata.json"
-    
-    # 优先从 metadata.json 获取元数据
+
     metadata = {}
     if metadata_file.exists():
         try:
@@ -52,396 +224,59 @@ def parse_markdown(md_file):
                 metadata = json.load(f)
         except:
             pass
-    
-    # 第一步：确定平台来源（最高优先级）
-    # 1. 从 metadata.json 的 platform 字段
-    # 2. 从视频 URL 推断
+
+    # 平台识别
     platform = metadata.get('platform', '')
     video_url = metadata.get('webpage_url', '')
-    
-    # 平台映射
-    platform_map = {
-        'douyin': '抖音',
-        'bilibili': 'Bilibili',
-        'xiaohongshu': '小红书',
-        'youtube': 'YouTube'
-    }
+    platform_map = {'douyin': '抖音', 'bilibili': 'Bilibili', 'xiaohongshu': '小红书', 'youtube': 'YouTube'}
     source = platform_map.get(platform, 'Unknown')
-    
-    # 如果 metadata 中没有 platform，从 URL 推断
+
     if source == 'Unknown' and video_url:
-        if "bilibili.com" in video_url or "b23.tv" in video_url:
-            source = "Bilibili"
-        elif "xiaohongshu.com" in video_url:
-            source = "小红书"
-        elif "douyin.com" in video_url or "iesdouyin.com" in video_url:
-            source = "抖音"
-        elif "youtube.com" in video_url or "youtu.be" in video_url:
-            source = "YouTube"
-    
+        for key, name in [('bilibili.com', 'Bilibili'), ('b23.tv', 'Bilibili'),
+                          ('xiaohongshu.com', '小红书'), ('douyin.com', '抖音'),
+                          ('iesdouyin.com', '抖音'), ('youtube.com', 'YouTube'), ('youtu.be', 'YouTube')]:
+            if key in video_url:
+                source = name
+                break
+
     with open(md_file, 'r', encoding='utf-8') as f:
         content = f.read()
-    
-    # ========== 按平台分支处理所有提取要素 ==========
-    
-    # 初始化变量
-    title = ""
-    note = ""
-    tags = []
-    author = ""
-    duration = ""
-    publish_date = ""
-    cover_url = ""
-    
-    # ========== Bilibili 分支 ==========
-    if source == 'Bilibili':
-        # 标题：从 Markdown 提取并清理 B 站特有的标签格式
-        title_match = re.search(r'^#\s+(.+)$', content, re.MULTILINE)
-        raw_title = title_match.group(1).strip() if title_match else "视频总结"
-        # B 站标题：移除 #标签 格式
-        title = re.sub(r'#[A-Za-z0-9\u4e00-\u9fa5]+(?:\s+[A-Za-z0-9\u4e00-\u9fa5]+)*', '', raw_title)
-        title = ' '.join(title.split()).strip()
-        # 截断过长的标题
-        if len(title) > 40:
-            if '【' in title:
-                brackets = re.findall(r'[【](.*?)[】]', title)
-                main_title = re.split(r'[【]', title)[0].strip()
-                if main_title and brackets:
-                    main_clauses = re.split(r'[!!！]', main_title)
-                    short_main = main_clauses[0].strip()
-                    if len(short_main) > 25:
-                        short_main = re.split(r'[，,]', short_main)[0]
-                    title = f"{short_main}[{brackets[0]}]..."
-                else:
-                    title = title[:30] + '...'
-            else:
-                clauses = re.split(r'[!!！，,]', title)
-                if len(clauses) >= 2:
-                    title = clauses[0] + '，' + clauses[1] + '...'
-                else:
-                    title = title[:30] + '...'
-        
-        # Note：从 Markdown 提取
-        note_match = re.search(r'## 📝 Note\n\n(.*?)(?=\n---|\n##)', content, re.DOTALL)
-        note = note_match.group(1).strip() if note_match else ""
-        
-        # Tags：三层策略（原视频 tags → 关键概念提取 → 默认值）
-        # 1. 优先使用 metadata.tags 数组（yt-dlp 提取的原始标签）
-        meta_tags = metadata.get('tags', [])
-        seen = set()
-        if meta_tags:
-            # 筛选 2-15 字符的标签（兼容英文如 "openclaw"）
-            for t in meta_tags:
-                if 2 <= len(t) <= 15 and t.lower() not in seen:
-                    seen.add(t.lower())
-                    tags.append(t)
-        
-        # 2. 如果不足 5 个，从 Markdown 内容提取关键概念补全
-        if len(tags) < 5:
-            # 2.1 从关键概念表格提取术语
-            concepts_match = re.search(r'## 📚 关键概念\n\n(.*?)(?=\n---|\n##)', content, re.DOTALL)
-            if concepts_match:
-                concepts_text = concepts_match.group(1)
-                # 提取表格中的概念名（第一列加粗部分）
-                concept_terms = re.findall(r'\|\s*\*\*([^*]+)\*\*\s*\|', concepts_text)
-                for term in concept_terms:
-                    term = term.strip()
-                    if (2 <= len(term) <= 15 and 
-                        term.lower() not in seen and
-                        term not in tags):
-                        seen.add(term.lower())
-                        tags.append(term)
-                        if len(tags) >= 5:
-                            break
-            
-            # 2.2 从核心要点标题提取关键词
-            if len(tags) < 5:
-                generic_words = {'问题', '方法', '技巧', '总结', '分析', '介绍', '说明', '如何', '什么'}
-                points_match = re.search(r'## 🎯 核心要点\n\n(.*?)(?=\n---|\n##)', content, re.DOTALL)
-                if points_match:
-                    points_text = points_match.group(1)
-                    # 提取加粗的要点标题
-                    point_titles = re.findall(r'\*\*[🎯💡🚀⭐✅🔑📌📝🎬📊🛠️💻📚]\s*([^*]+)\*\*', points_text)
-                    for title in point_titles:
-                        words = re.split(r'[\s,，.。:：!！?？]+', title)
-                        for word in words:
-                            word = word.strip()
-                            if (2 <= len(word) <= 15 and 
-                                word.lower() not in seen and 
-                                word not in generic_words and
-                                not re.match(r'^[\d]+$', word)):
-                                seen.add(word.lower())
-                                tags.append(word)
-                                if len(tags) >= 5:
-                                    break
-        
-        # 3. 仍不足 5 个时用默认值补齐
-        default_tags = ["视频总结", "AI 分析", "教程", "技巧", "知识分享"]
-        while len(tags) < 5:
-            for t in default_tags:
-                if t not in tags:
-                    tags.append(t)
-                    if len(tags) >= 5:
-                        break
-        
-        # UP 主：从 Markdown 提取，或使用 metadata
-        author_match = re.search(r'\*\*UP 主:\*\*\s*(.+)$', content, re.MULTILINE)
-        author = author_match.group(1).strip() if author_match else metadata.get('uploader', '')
-        
-        # 时长：从 metadata 获取
-        duration = metadata.get('duration_string', '')
-        if not duration:
-            duration_match = re.search(r'\*\*时长:\*\*\s*(.+)$', content, re.MULTILINE)
-            duration = duration_match.group(1).strip() if duration_match else ""
-        
-        # 发布日期：从 metadata 获取
-        publish_date = metadata.get('upload_date', '')
-        if not publish_date:
-            publish_match = re.search(r'\*\*发布:\*\*\s*(.+)$', content, re.MULTILINE)
-            publish_date = publish_match.group(1).strip() if publish_match else ""
-        
-        # 封面：优先从 Markdown 提取，其次 metadata
-        cover_match = re.search(r'!\[视频封面\]\(([^)]+)\)', content)
-        if cover_match:
-            cover_url = cover_match.group(1).strip()
-        else:
-            screenshot_matches = re.findall(r'!\[[^\]]+\]\((https?://[^)]+)\)', content)
-            if screenshot_matches:
-                cover_url = screenshot_matches[0].strip()
-            else:
-                cover_url = metadata.get('thumbnail', '')
-    
-    # ========== 抖音分支 ==========
-    elif source == '抖音':
-        # 标题：从 Markdown 提取，抖音标题通常较简洁
-        title_match = re.search(r'^#\s+(.+)$', content, re.MULTILINE)
-        raw_title = title_match.group(1).strip() if title_match else "视频总结"
-        # 抖音标题：移除 #话题 格式
-        title = re.sub(r'#[^\s#]+', '', raw_title).strip()
-        # 截断过长的标题
-        if len(title) > 40:
-            title = title[:37] + '...'
-        
-        # Note：从 Markdown 提取
-        note_match = re.search(r'## 📝 Note\n\n(.*?)(?=\n---|\n##)', content, re.DOTALL)
-        note = note_match.group(1).strip() if note_match else ""
-        
-        # Tags：优先从 Markdown **Tags:** 行提取，其次从 video_desc 提取
-        tags_match = re.search(r'\*\*Tags:\*\*\s*(.+)$', content, re.MULTILINE)
-        if tags_match:
-            tags_line = tags_match.group(1).strip()
-            # 解析 `标签 1` `标签 2` 格式
-            markdown_tags = re.findall(r'`([^`]+)`', tags_line)
-            if markdown_tags:
-                tags = markdown_tags[:5]
-        
-        # 如果 Markdown 没有 Tags，从 video_desc 提取
-        if not tags:
-            video_desc = metadata.get('video_desc', '')
-            if video_desc:
-                douyin_tags = re.findall(r'#([^#]+)#', video_desc)
-                tags.extend(douyin_tags)
-                douyin_tags2 = re.findall(r'#([^\s#]+)', video_desc)
-                for t in douyin_tags2:
-                    if t not in tags:
-                        tags.append(t)
-        
-        # UP 主：抖音用户可能显示为"抖音用户"，优先用 metadata
-        author = metadata.get('uploader', '')
-        if not author or author in ['抖音用户', 'Unknown', 'N/A']:
-            author_match = re.search(r'\*\*UP 主:\*\*\s*(.+)$', content, re.MULTILINE)
-            author = author_match.group(1).strip() if author_match else "抖音用户"
-        
-        # 时长：从 metadata 获取
-        duration = metadata.get('duration_string', '')
-        
-        # 发布日期：从 metadata 获取
-        publish_date = metadata.get('upload_date', '')
-        
-        # 封面：抖音链接会过期，优先使用 OSS 截图
-        screenshot_matches = re.findall(r'!\[[^\]]+\]\((https?://[^)]+)\)', content)
-        if screenshot_matches:
-            cover_url = screenshot_matches[0].strip()
-        else:
-            cover_url = metadata.get('thumbnail', '')
-    
-    # ========== 小红书分支 ==========
-    elif source == '小红书':
-        # 标题：从 Markdown 提取
-        title_match = re.search(r'^#\s+(.+)$', content, re.MULTILINE)
-        raw_title = title_match.group(1).strip() if title_match else "视频总结"
-        # 小红书标题：移除 #话题 格式
-        title = re.sub(r'#[^\s#]+', '', raw_title).strip()
-        if len(title) > 40:
-            title = title[:37] + '...'
-        
-        # Note：从 Markdown 提取
-        note_match = re.search(r'## 📝 Note\n\n(.*?)(?=\n---|\n##)', content, re.DOTALL)
-        note = note_match.group(1).strip() if note_match else ""
-        
-        # Tags：三层策略（原视频 tags → AI 概念提取 → 默认值），最多 5 个
-        seen = set()
-        # 1. 优先使用 metadata.tags
-        xhs_meta_tags = metadata.get('tags', [])
-        if xhs_meta_tags:
-            for t in xhs_meta_tags:
-                if 2 <= len(t) <= 15 and t.lower() not in seen:
-                    seen.add(t.lower())
-                    tags.append(t)
-                    if len(tags) >= 5:
-                        break
-        
-        # 2. 从 desc（笔记描述）提取
-        if len(tags) < 5:
-            desc = metadata.get('desc', '')
-            if desc:
-                xhs_tags = re.findall(r'#([^\s#]+)', desc)
-                for t in xhs_tags:
-                    if 2 <= len(t) <= 15 and t.lower() not in seen:
-                        seen.add(t.lower())
-                        tags.append(t)
-                        if len(tags) >= 5:
-                            break
-        
-        # UP 主：优先从 Markdown 提取（**Author:** 字段）
-        author_match = re.search(r'\*\*Author:\*\*\s*(.+)$', content, re.MULTILINE)
-        author = author_match.group(1).strip() if author_match else ''
-        if not author or author == 'N/A':
-            # 从 metadata 获取（处理 None 的情况）
-            author = metadata.get('uploader') or metadata.get('uploader_id', '')
-            # 如果是 ID 格式（16 进制），显示为平台用户
-            if author and re.match(r'^[0-9a-f]{16,}$', author, re.IGNORECASE):
-                author = '小红书用户'
-        if not author:
-            author = '小红书用户'
-        
-        # 时长：优先从 Markdown 提取，其次 metadata
+
+    # 提取各字段（平台特化逻辑封装在函数内部）
+    title = _extract_title_common(content, source)
+    note = _extract_note(content)
+    tags = _extract_tags(metadata, content, source)
+    author = _extract_author(content, metadata, source)
+    cover_url = _extract_cover(content, metadata)
+
+    # 时长
+    duration = metadata.get('duration_string', '')
+    if not duration:
         duration_match = re.search(r'\*\*时长:\*\*\s*(.+)$', content, re.MULTILINE)
-        duration = duration_match.group(1).strip() if duration_match else ''
-        if not duration:
-            duration = metadata.get('duration_string', '')
-        
-        # 发布日期：从 metadata 获取
-        publish_date = metadata.get('upload_date', '')
-        
-        # 封面：优先使用 OSS 截图
-        screenshot_matches = re.findall(r'!\[[^\]]+\]\((https?://[^)]+)\)', content)
-        if screenshot_matches:
-            cover_url = screenshot_matches[0].strip()
-        else:
-            cover_url = metadata.get('thumbnail', '')
-    
-    # ========== YouTube 分支 ==========
-    elif source == 'YouTube':
-        # 标题：优先从 metadata 获取，其次从 Markdown 提取
-        title = metadata.get('title', '')
-        if not title or title == 'Unknown':
-            title_match = re.search(r'^#\s+(.+)$', content, re.MULTILINE)
-            raw_title = title_match.group(1).strip() if title_match else "Video Summary"
-            # YouTube 标题：移除标签
-            title = re.sub(r'#[A-Za-z0-9]+', '', raw_title).strip()
-        # 截断过长的标题
-        if len(title) > 40:
-            title = title[:37] + '...'
-        
-        # Note：从 Markdown 提取
-        note_match = re.search(r'## 📝 Note\n\n(.*?)(?=\n---|\n##)', content, re.DOTALL)
-        note = note_match.group(1).strip() if note_match else ""
-        
-        # Tags：三层策略（原视频 tags → AI 概念提取 → 默认值）
-        seen = set()
-        # 1. 优先使用 metadata.tags
-        yt_tags = metadata.get('tags', [])
-        if yt_tags:
-            for t in yt_tags:
-                if 2 <= len(t) <= 15 and t.lower() not in seen:
-                    seen.add(t.lower())
-                    tags.append(t)
-        
-        # 2. 从 categories 提取
-        if len(tags) < 5:
-            categories = metadata.get('categories', [])
-            for c in categories:
-                if 2 <= len(c) <= 15 and c.lower() not in seen:
-                    seen.add(c.lower())
-                    tags.append(c)
-        
-        # 3. 从 Markdown 关键概念提取
-        if len(tags) < 5:
-            concepts_match = re.search(r'## 📚 关键概念\n\n(.*?)(?=\n---|\n##)', content, re.DOTALL)
-            if concepts_match:
-                concepts_text = concepts_match.group(1)
-                concept_terms = re.findall(r'\|\s*\*\*([^*]+)\*\*\s*\|', concepts_text)
-                for term in concept_terms:
-                    term = term.strip()
-                    if 2 <= len(term) <= 15 and term.lower() not in seen:
-                        seen.add(term.lower())
-                        tags.append(term)
-                        if len(tags) >= 5:
-                            break
-        
-        # UP 主：从 metadata 获取 uploader
-        author = metadata.get('uploader', '')
-        if not author:
-            author_match = re.search(r'\*\*Author:\*\*\s*(.+)$', content, re.MULTILINE)
-            author = author_match.group(1).strip() if author_match else ""
-        
-        # 时长：从 metadata 获取
-        duration = metadata.get('duration_string', '')
-        
-        # 发布日期：从 metadata 获取
-        publish_date = metadata.get('upload_date', '')
-        
-        # 封面：从 metadata 获取 thumbnail
-        cover_url = metadata.get('thumbnail', '')
-    
-    # ========== 默认分支（Unknown）==========
-    else:
-        # 标题：从 Markdown 提取
-        title_match = re.search(r'^#\s+(.+)$', content, re.MULTILINE)
-        title = title_match.group(1).strip() if title_match else "视频总结"
-        if len(title) > 40:
-            title = title[:37] + '...'
-        
-        # Note：从 Markdown 提取
-        note_match = re.search(r'## 📝 Note\n\n(.*?)(?=\n---|\n##)', content, re.DOTALL)
-        note = note_match.group(1).strip() if note_match else ""
-        
-        # Tags：使用默认
-        tags = []
-        
-        # UP 主：从 metadata 获取
-        author = metadata.get('uploader', '')
-        
-        # 时长：从 metadata 获取
-        duration = metadata.get('duration_string', '')
-        
-        # 发布日期：从 metadata 获取
-        publish_date = metadata.get('upload_date', '')
-        
-        # 封面：从 metadata 获取
-        cover_url = metadata.get('thumbnail', '')
-    
-    # 如果没有视频 URL，从 Markdown 提取
+        duration = duration_match.group(1).strip() if duration_match else ""
+
+    # 发布日期
+    publish_date = metadata.get('upload_date', '')
+    if not publish_date:
+        publish_match = re.search(r'\*\*发布:\*\*\s*(.+)$', content, re.MULTILINE)
+        publish_date = publish_match.group(1).strip() if publish_match else ""
+
+    # 视频 URL fallback
     if not video_url:
         link_match = re.search(r'\*\*链接:\*\*\s*(.+)$', content, re.MULTILINE)
         video_url = link_match.group(1).strip() if link_match else ""
-    
-    # 兜底：如果没有标签，使用默认
+
     if not tags:
         tags = ['视频总结', 'AI 分析', '教程', '技巧', '知识分享']
-    
+
+    # 抖音作者兜底
+    if source == '抖音' and (not author or author in ['抖音用户', 'Unknown', 'N/A']):
+        author = '抖音用户'
+
     return {
-        'title': title,
-        'note': note,
-        'tags': tags,
-        'author': author,
-        'video_url': video_url,
-        'duration': duration,
-        'publish_date': publish_date,
-        'cover_url': cover_url,
-        'source': source,
-        'full_content': content
+        'title': title, 'note': note, 'tags': tags, 'author': author,
+        'video_url': video_url, 'duration': duration, 'publish_date': publish_date,
+        'cover_url': cover_url, 'source': source, 'full_content': content
     }
 
 
@@ -789,7 +624,7 @@ def push_to_notion(md_file, database_id=None):
     if not db_id:
         print("❌ 错误：未指定 Notion Database ID")
         print("用法：python3 push-to-notion.py <summary.md> [database_id]")
-        print("或在 ~/.openclaw/.env 中配置 NOTION_VIDEO_SUMMARY_DATABASE_ID")
+        print("或在 ~/.hermes/.env 或 ~/.openclaw/.env 中配置 NOTION_VIDEO_SUMMARY_DATABASE_ID")
         return None, None
     
     # 解析 Markdown

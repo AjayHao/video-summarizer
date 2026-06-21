@@ -1,6 +1,6 @@
 #!/bin/bash
-# video-summarize.sh - 视频总结生成完整流程 v1.0.13
-# 更新日期：2026-05-06
+# video-summarize.sh - 视频总结生成完整流程 v1.1.0
+# 更新日期：2026-06-22
 # 用法：./video-summarize.sh <视频 URL> [输出目录] [cookies 文件] [选项]
 
 set -e
@@ -40,6 +40,8 @@ VERBOSE="false"
 KEEP_VIDEO="false"
 AUTO_PUSH="false"
 RESUME="false"
+PUSH_OBSIDIAN="true"    # 默认推送到 Obsidian
+PUSH_NOTION="false"     # 需显式 --notion
 
 for arg in "$@"; do
     case $arg in
@@ -50,7 +52,20 @@ for arg in "$@"; do
             KEEP_VIDEO="true"
             ;;
         --push|--auto-push)
-            AUTO_PUSH="true"
+            # 兼容旧版：--push 等同于 --notion
+            PUSH_NOTION="true"
+            ;;
+        --notion)
+            PUSH_NOTION="true"
+            ;;
+        --obsidian)
+            PUSH_OBSIDIAN="true"
+            ;;
+        --no-obsidian)
+            PUSH_OBSIDIAN="false"
+            ;;
+        --no-notion)
+            PUSH_NOTION="false"
             ;;
         --resume)
             RESUME="true"
@@ -74,7 +89,11 @@ if [[ -z "$VIDEO_URL" ]]; then
     echo "选项:"
     echo "  --verbose, -v      显示详细日志（包括错误信息）"
     echo "  --keep-video       保留视频/音频文件（默认清理）"
-    echo "  --push, --auto-push  完成后自动推送到 Notion"
+    echo "  --obsidian         推送到 Obsidian Vault（默认开启）"
+    echo "  --no-obsidian      禁用 Obsidian 推送"
+    echo "  --notion           推送到 Notion（需配置 API Key）"
+    echo "  --no-notion        禁用 Notion 推送"
+    echo "  --push             同 --notion（兼容旧版）"
     echo "  --resume           从中断点恢复（检测进度文件）"
     exit 1
 fi
@@ -246,12 +265,22 @@ if [[ "$USER_SPECIFIED_OUTPUT" == "true" ]]; then
     validate_output_dir "$OUTPUT_DIR"
 else
     OUTPUT_DIR="/tmp/video-summarizer/$PLATFORM/$VIDEO_ID"
+    # Windows 兼容：使用 TEMP 环境变量
+    if [[ "$(uname -s 2>/dev/null)" == MINGW* || "$(uname -s 2>/dev/null)" == MSYS* || -n "$WINDIR" ]]; then
+        OUTPUT_DIR="${TEMP:-/tmp}/video-summarizer/$PLATFORM/$VIDEO_ID"
+    fi
 fi
 
 mkdir -p "$OUTPUT_DIR"
 
-# 安全校验：.env 文件权限
-ENV_FILE_CHECK="$HOME/.openclaw/.env"
+# 安全校验：.env 文件权限（优先 ~/.hermes/.env，fallback ~/.openclaw/.env）
+if [ -f "$HOME/.hermes/.env" ]; then
+    ENV_FILE_CHECK="$HOME/.hermes/.env"
+elif [ -f "$HOME/.openclaw/.env" ]; then
+    ENV_FILE_CHECK="$HOME/.openclaw/.env"
+else
+    ENV_FILE_CHECK="$HOME/.hermes/.env"
+fi
 if [[ -f "$ENV_FILE_CHECK" ]]; then
     ENV_PERMS=$(stat -c '%a' "$ENV_FILE_CHECK" 2>/dev/null)
     if [[ "$ENV_PERMS" != "600" && "$ENV_PERMS" != "400" ]]; then
@@ -290,16 +319,17 @@ else
     echo "🍪 Cookies: 无"
 fi
 
-# 检查环境变量（自动推送）
-if [[ "$AUTO_PUSH" == "true" ]]; then
+# 检查环境变量（Notion 自动推送）
+if [[ "$PUSH_NOTION" == "true" ]]; then
     if [[ -z "$NOTION_VIDEO_SUMMARY_DATABASE_ID" ]]; then
-        NOTION_VIDEO_SUMMARY_DATABASE_ID=$(grep "^NOTION_VIDEO_SUMMARY_DATABASE_ID=" "$HOME/.openclaw/.env" 2>/dev/null | cut -d'=' -f2- | tr -d '"' | tr -d "'")
+        NOTION_VIDEO_SUMMARY_DATABASE_ID=$(grep "^NOTION_VIDEO_SUMMARY_DATABASE_ID=" "$ENV_FILE_CHECK" 2>/dev/null | cut -d'=' -f2- | tr -d '"' | tr -d "'")
     fi
 fi
 
 [[ "$VERBOSE" == "true" ]] && echo "🔍 详细模式 | "
 [[ "$KEEP_VIDEO" == "true" ]] && echo "💾 保留视频 | "
-[[ "$AUTO_PUSH" == "true" ]] && echo "📤 自动推送 | "
+[[ "$PUSH_OBSIDIAN" == "true" ]] && echo "📓 Obsidian | "
+[[ "$PUSH_NOTION" == "true" ]] && echo "📤 Notion | "
 [[ "$RESUME" == "true" ]] && echo "♻️  恢复模式"
 echo ""
 
@@ -347,7 +377,7 @@ with open(os.environ['PROGRESS_FILE']) as f:
     return 1
 }
 
-echo "🎬 Video Summarizer v1.0.13"
+echo "🎬 Video Summarizer v1.1.0"
 echo ""
 
 # Step 1: 元数据
@@ -1047,61 +1077,72 @@ fi
 [[ $(python3 -c "import json; print(len([x for x in json.load(open('$OSS_URLS_FILE')) if x.get('success')]))" 2>/dev/null || echo 0) -gt 0 ]] && echo "📸 截图：✅ 已上传" || echo "📸 截图：⚠️  本地"
 echo ""
 
-# Step 9: 推送到 Notion（自动检测配置）
-echo "📤 Step 9: 检查 Notion 配置..."
-
-# 检查 Notion 配置（环境变量或 .env 文件）
-NOTION_CONFIGURED="false"
-NOTION_DB_ID=""
-NOTION_KEY=""
-
-# 1. 优先使用环境变量
-if [[ -n "$NOTION_VIDEO_SUMMARY_DATABASE_ID" && -n "$NOTION_API_KEY" ]]; then
-    NOTION_CONFIGURED="true"
-    NOTION_DB_ID="$NOTION_VIDEO_SUMMARY_DATABASE_ID"
-    NOTION_KEY="$NOTION_API_KEY"
-    log_info "   使用环境变量配置"
-else
-    # 2. 尝试从 .env 文件读取
-    ENV_FILE="$HOME/.openclaw/.env"
-    if [[ -f "$ENV_FILE" ]]; then
-        ENV_DB_ID=$(grep -E "^NOTION_VIDEO_SUMMARY_DATABASE_ID=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2 | tr -d '"' | tr -d "'")
-        ENV_KEY=$(grep -E "^NOTION_API_KEY=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2 | tr -d '"' | tr -d "'")
-        
-        if [[ -n "$ENV_DB_ID" && -n "$ENV_KEY" ]]; then
-            NOTION_CONFIGURED="true"
-            NOTION_DB_ID="$ENV_DB_ID"
-            NOTION_KEY="$ENV_KEY"
-            log_info "   使用 .env 文件配置 ($ENV_FILE)"
+# Step 9: 推送到 Notion（仅在 --notion 时触发）
+if [[ "$PUSH_NOTION" == "true" ]]; then
+    echo "📤 Step 9: 推送 Notion..."
+    
+    NOTION_CONFIGURED="false"
+    NOTION_DB_ID=""
+    NOTION_KEY=""
+    
+    if [[ -n "$NOTION_VIDEO_SUMMARY_DATABASE_ID" && -n "$NOTION_API_KEY" ]]; then
+        NOTION_CONFIGURED="true"
+        NOTION_DB_ID="$NOTION_VIDEO_SUMMARY_DATABASE_ID"
+        NOTION_KEY="$NOTION_API_KEY"
+        log_info "   使用环境变量配置"
+    else
+        if [ -f "$HOME/.hermes/.env" ]; then
+            ENV_FILE="$HOME/.hermes/.env"
+        elif [ -f "$HOME/.openclaw/.env" ]; then
+            ENV_FILE="$HOME/.openclaw/.env"
+        else
+            ENV_FILE=""
+        fi
+        if [[ -f "$ENV_FILE" ]]; then
+            ENV_DB_ID=$(grep -E "^NOTION_VIDEO_SUMMARY_DATABASE_ID=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2 | tr -d '"' | tr -d "'")
+            ENV_KEY=$(grep -E "^NOTION_API_KEY=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2 | tr -d '"' | tr -d "'")
+            if [[ -n "$ENV_DB_ID" && -n "$ENV_KEY" ]]; then
+                NOTION_CONFIGURED="true"
+                NOTION_DB_ID="$ENV_DB_ID"
+                NOTION_KEY="$ENV_KEY"
+                log_info "   使用 .env 文件配置 ($ENV_FILE)"
+            fi
         fi
     fi
+    
+    if [[ "$NOTION_CONFIGURED" == "true" ]]; then
+        save_progress "9" "running"
+        NOTION_VIDEO_SUMMARY_DATABASE_ID="$NOTION_DB_ID" \
+        python3 "$SCRIPT_DIR/push-to-notion.py" "$SUMMARY_FILE"
+        PUSH_EXIT=$?
+        if [[ $PUSH_EXIT -eq 0 ]]; then
+            echo "   ✅ Notion 推送成功"
+            save_progress "9" "done"
+        else
+            echo "   ❌ Notion 推送失败"
+            save_progress "9" "failed"
+        fi
+    else
+        echo "   ⚠️  Notion 未配置，跳过"
+        echo "   💡 在 ~/.hermes/.env 中配置 NOTION_API_KEY + NOTION_VIDEO_SUMMARY_DATABASE_ID"
+    fi
+    echo ""
 fi
 
-# 执行推送或跳过
-if [[ "$NOTION_CONFIGURED" == "true" ]]; then
-    echo "ℹ️     Notion 配置已检测，开始推送..."
-    save_progress "9" "running"
+# Step 10: 推送到 Obsidian（默认执行，--no-obsidian 可禁用）
+if [[ "$PUSH_OBSIDIAN" == "true" ]]; then
+    echo "📓 Step 10: Obsidian 本地存储..."
+    save_progress "10" "running"
     
-    NOTION_VIDEO_SUMMARY_DATABASE_ID="$NOTION_DB_ID" \
-    python3 "$SCRIPT_DIR/push-to-notion.py" "$SUMMARY_FILE"
-    PUSH_EXIT=$?
+    python3 "$SCRIPT_DIR/push-to-obsidian.py" "$OUTPUT_DIR"
+    OBS_EXIT=$?
     
-    if [[ $PUSH_EXIT -eq 0 ]]; then
-        echo "✅ Notion 推送成功"
-        save_progress "9" "done"
+    if [[ $OBS_EXIT -eq 0 ]]; then
+        echo "   ✅ Obsidian 存储完成"
+        save_progress "10" "done"
     else
-        echo "❌ Notion 推送失败"
-        save_progress "9" "failed"
+        echo "   ⚠️  Obsidian 存储跳过（未配置或失败）"
+        save_progress "10" "skipped"
     fi
-else
-    echo "⚠️     未检测到 Notion 配置，跳过推送"
-    echo "   💡 提示：如需自动推送，请配置以下任一方式："
-    echo "      方式 1 - 环境变量："
-    echo "        export NOTION_VIDEO_SUMMARY_DATABASE_ID=your_database_id"
-    echo "        export NOTION_API_KEY=your_api_key"
-    echo "      方式 2 - .env 文件："
-    echo "        在 $HOME/.openclaw/.env 中添加："
-    echo "        NOTION_VIDEO_SUMMARY_DATABASE_ID=your_database_id"
-    echo "        NOTION_API_KEY=your_api_key"
+    echo ""
 fi
-echo ""

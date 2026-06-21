@@ -9,7 +9,7 @@
     client = LLMClient.from_env()
     result = client.chat(messages=[{'role': 'user', 'content': '你好'}])
 
-版本：v1.0.13
+版本：v1.1.0
 """
 
 import os
@@ -44,9 +44,12 @@ class LLMClient:
 
     @classmethod
     def from_env(cls):
-        """从环境变量构建客户端。读取 ~/.openclaw/.env。"""
+        """从环境变量构建客户端。优先读取 ~/.hermes/.env，fallback ~/.openclaw/.env。"""
         from dotenv import load_dotenv
-        load_dotenv(Path.home() / '.openclaw' / '.env')
+        env_path = Path.home() / '.hermes' / '.env'
+        if not env_path.exists():
+            env_path = Path.home() / '.openclaw' / '.env'
+        load_dotenv(env_path)
 
         api_key = os.getenv('LLM_API_KEY', '').strip()
         base_url = os.getenv('LLM_BASE_URL', '').strip()
@@ -63,7 +66,7 @@ class LLMClient:
         if missing:
             raise ValueError(
                 f"\n❌ 缺少 LLM 配置环境变量：{', '.join(missing)}\n"
-                f"\n请在 ~/.openclaw/.env 中配置：\n"
+                f"\n请在 ~/.hermes/.env 或 ~/.openclaw/.env 中配置：\n"
                 f"  LLM_API_KEY=your_api_key\n"
                 f"  LLM_BASE_URL=https://api.deepseek.com\n"
                 f"  LLM_MODEL=deepseek-v4-pro\n"
