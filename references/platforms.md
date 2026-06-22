@@ -22,7 +22,7 @@ cd scripts
 ./video-summarize.sh "https://www.bilibili.com/video/BV1xxxx"
 
 # 3. 查看结果
-cat /tmp/video-summarizer-*/summary.md
+cat <output_dir>/summary.md
 ```
 
 **说明**:
@@ -46,7 +46,7 @@ cat /tmp/video-summarizer-*/summary.md
 ./video-summarize.sh "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 
 # 指定输出目录
-./video-summarize.sh "https://youtu.be/dQw4w9WgXcQ" /tmp/output
+./video-summarize.sh "https://youtu.be/dQw4w9WgXcQ" <output_dir>
 ```
 
 **说明**:

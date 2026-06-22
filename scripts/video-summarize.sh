@@ -21,12 +21,22 @@ if [ -z "$AGENT_HOME" ]; then
     fi
 fi
 _ah() {
-    # 跨平台路径转换：MSYS/Windows 转换反斜杠，Linux 原样返回
     case "$(uname -s 2>/dev/null)" in
         MINGW*|MSYS*) echo "$AGENT_HOME" | sed 's|\\|/|g' | sed 's|^\([A-Za-z]\):|/\1|' ;;
         *) echo "$AGENT_HOME" ;;
     esac
 }
+
+# ====== 跨平台临时目录 ======
+case "$(uname -s 2>/dev/null)" in
+    MINGW*|MSYS*)
+        # Windows: 使用原生路径（Python 可识别），反斜杠统一转正斜杠
+        TMPDIR=$(cygpath -w "${TEMP:-/tmp}" 2>/dev/null | sed 's|\\|/|g')
+        ;;
+    *)
+        TMPDIR="/tmp"
+        ;;
+esac
 
 # ============== 错误处理与日志 ==============
 
@@ -287,11 +297,7 @@ VIDEO_ID=$(extract_video_id "$VIDEO_URL" "$PLATFORM")
 if [[ "$USER_SPECIFIED_OUTPUT" == "true" ]]; then
     validate_output_dir "$OUTPUT_DIR"
 else
-    OUTPUT_DIR="/tmp/video-summarizer/$PLATFORM/$VIDEO_ID"
-    # Windows 兼容：使用 TEMP 环境变量
-    if [[ "$(uname -s 2>/dev/null)" == MINGW* || "$(uname -s 2>/dev/null)" == MSYS* || -n "$WINDIR" ]]; then
-        OUTPUT_DIR="${TEMP:-/tmp}/video-summarizer/$PLATFORM/$VIDEO_ID"
-    fi
+    OUTPUT_DIR="$TMPDIR/video-summarizer/$PLATFORM/$VIDEO_ID"
 fi
 
 mkdir -p "$OUTPUT_DIR"
@@ -1086,7 +1092,7 @@ echo ""
 
 # 安全清理（限制目录范围）
 if [[ "$KEEP_VIDEO" != "true" ]]; then
-    if [[ "$OUTPUT_DIR" == /tmp/video-summarizer/* ]]; then
+    if [[ "$OUTPUT_DIR" == "$TMPDIR/video-summarizer/"* ]]; then
         rm -f "$OUTPUT_DIR/video.mp4" "$OUTPUT_DIR/audio.mp3" "$OUTPUT_DIR/audio.webm" "$OUTPUT_DIR/video.f"* 2>/dev/null
         echo "🧹 已清理视频/音频"
     else

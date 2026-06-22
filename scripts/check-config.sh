@@ -183,7 +183,7 @@ if [[ "$CONFIG_OK" == "true" && $FAIL -eq 0 ]]; then
     echo "✅ 配置就绪，可以开始使用！"
     echo ""
     echo "快速开始:"
-    echo "  $SCRIPT_DIR/video-summarize.sh \"视频 URL\" /tmp/output"
+    echo "  $SCRIPT_DIR/video-summarize.sh \"视频 URL\""
     echo ""
     echo "选项:"
     echo "  --verbose     显示详细日志"

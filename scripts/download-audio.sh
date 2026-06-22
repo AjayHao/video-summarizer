@@ -7,7 +7,17 @@ PYTHON="${PYTHON:-python3}"
 set -e
 
 VIDEO_URL="$1"
-OUTPUT_FILE="${2:-/tmp/audio.mp3}"
+# 跨平台临时目录
+case "$(uname -s 2>/dev/null)" in
+    MINGW*|MSYS*)
+        TMPDIR=$(cygpath -w "${TEMP:-/tmp}" 2>/dev/null | sed 's|\\|/|g')
+        ;;
+    *)
+        TMPDIR="/tmp"
+        ;;
+esac
+
+OUTPUT_FILE="${2:-$TMPDIR/audio.mp3}"
 
 # 输入校验
 if [[ -z "$VIDEO_URL" ]]; then
@@ -61,7 +71,7 @@ if [[ "$PLATFORM" == "douyin" ]]; then
         DOWNLOAD_URL=$(echo "$VIDEO_INFO" | grep "下载链接" | sed 's/下载链接：//')
         
         if [[ -n "$DOWNLOAD_URL" ]]; then
-            TEMP_VIDEO="/tmp/douyin_temp_$$.mp4"
+            TEMP_VIDEO="$TMPDIR/douyin_temp_$$.mp4"
             
             # 下载视频
             if curl -sL -o "$TEMP_VIDEO" "$DOWNLOAD_URL"; then
@@ -104,7 +114,7 @@ rm -f "$OUTPUT_FILE" 2>/dev/null
 
 # 尝试 2: 下载视频并提取音频（通用降级）
 log_info "尝试 2/3: 下载视频提取音频..."
-TEMP_VIDEO="/tmp/video_temp_$$"
+TEMP_VIDEO="$TMPDIR/video_temp_$$"
 if [[ "$PLATFORM" == "xhs" || "$PLATFORM" == "douyin" ]]; then
     # 小红书/抖音：不限制高度，使用最佳视频
     if yt-dlp -f "best" -o "$TEMP_VIDEO.mp4" "$VIDEO_URL" 2>&1 && \

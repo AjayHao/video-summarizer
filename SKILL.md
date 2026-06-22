@@ -93,7 +93,7 @@ cd scripts
 ./video-summarize.sh "https://www.bilibili.com/video/BV1xxxx"
 
 # 4. 查看结果
-cat /tmp/video-summarizer-*/summary.md
+cat $TMPDIR/video-summarizer-*/summary.md  # Linux: /tmp/...  Windows: %TEMP%/...
 ```
 
 ---

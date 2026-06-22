@@ -159,7 +159,7 @@ cat output/summary.md
 OSS 路径不匹配，重新上传截图：
 
 ```bash
-python3 upload-to-oss.py auto /tmp/output
+python3 upload-to-oss.py auto <output_dir>
 ```
 
 ### 转录失败

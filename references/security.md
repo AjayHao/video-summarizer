@@ -10,7 +10,7 @@
 |-----------|------|--------|----------|
 | `~/.cookies/bilibili_cookies.txt` | B 站官方字幕获取 | 高（Session Token） | 用户主动扫码生成，可随时删除 |
 | `$AGENT_HOME/.env` | API Keys 存储 | 高 | 用户自行配置，skill 不修改 |
-| `/tmp/video-summarizer-*/` | 临时输出 | 低 | 处理完成后可手动清理 |
+| `<临时目录>/video-summarizer-*/` | 临时输出 | 低 | 处理完成后可手动清理 |
 
 ## 外部服务端点
 

@@ -25,14 +25,14 @@
 ./video-summarize.sh "URL" --verbose
 
 # 查看错误日志
-cat /tmp/output/error.log
+cat <output_dir>/error.log
 ```
 
 ## 常见问题
 
 | 问题 | 原因 | 解决方案 |
 |------|------|----------|
-| 截图 404 | OSS 路径不匹配 | `python3 upload-to-oss.py auto /tmp/output` |
+| 截图 404 | OSS 路径不匹配 | `python3 upload-to-oss.py auto <output_dir>` |
 | 标签默认值 | 标签提取失败 | 检查标题 hashtag 格式 `#标签` |
 | 转录失败 | 无 GPU/API 配额 | 检查 `GROQ_API_KEY`，或确保 `faster-whisper` 已安装 |
 | Notion 推送失败 | API Key 过期 | 更新 `NOTION_API_KEY`（可选功能，仅 --push 需要） |
