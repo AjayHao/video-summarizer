@@ -967,7 +967,7 @@ except Exception as e:
     else
         # 正常截图流程
         set +e  # ffmpeg 截图允许失败，不中断循环
-        local total=${#SCREENSHOT_TIMES[@]}
+        total=${#SCREENSHOT_TIMES[@]}
         for ((idx=0; idx<total; idx++)); do
             TIME="${SCREENSHOT_TIMES[$idx]}"
             # 转换为 HH:MM:SS 格式（ffmpeg 需要）
