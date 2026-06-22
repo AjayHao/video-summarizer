@@ -1058,6 +1058,7 @@ fi
 # Step 7: 渲染最终 Markdown（截图和 OSS 完成后）
 echo "📝 Step 7: 渲染 Markdown..."
 SUMMARY_FILE="$OUTPUT_DIR/summary.md"
+TEMP_SUMMARY="${TEMP_SUMMARY:-$OUTPUT_DIR/summary_temp.md}"
 
 # 重新调用 AI 脚本，让它读取已上传的截图 URL 并渲染最终 Markdown
 $PYTHON "$AI_SCRIPT" "$SUBTITLE_FILE" "$OUTPUT_DIR/metadata.json" "$SUMMARY_FILE" 2>/dev/null || true
