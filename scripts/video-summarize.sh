@@ -966,6 +966,7 @@ except Exception as e:
         fi
     else
         # 正常截图流程
+        set +e  # ffmpeg 截图允许失败，不中断循环
         for i in "${!SCREENSHOT_TIMES[@]}"; do
             TIME="${SCREENSHOT_TIMES[$i]}"
             # 转换为 HH:MM:SS 格式（ffmpeg 需要）
@@ -983,6 +984,7 @@ except Exception as e:
                 SUCCESS_COUNT=$((SUCCESS_COUNT + 1))
             } || true
         done
+        set -e
     fi
     
     [[ $SUCCESS_COUNT -eq 0 ]] && { echo "❌ 截图失败"; exit 1; }
@@ -1065,6 +1067,8 @@ fi
 echo "📝 Step 7: 渲染 Markdown..."
 SUMMARY_FILE="$OUTPUT_DIR/summary.md"
 TEMP_SUMMARY="${TEMP_SUMMARY:-$OUTPUT_DIR/summary_temp.md}"
+# 确保字幕文件路径有效
+SUBTITLE_FILE="${SUBTITLE_FILE:-$(find "$OUTPUT_DIR" -name "*.vtt" -o -name "audio.txt" 2>/dev/null | head -1)}"
 
 # 重新调用 AI 脚本，让它读取已上传的截图 URL 并渲染最终 Markdown
 $PYTHON "$AI_SCRIPT" "$SUBTITLE_FILE" "$OUTPUT_DIR/metadata.json" "$SUMMARY_FILE" 2>/dev/null || true
