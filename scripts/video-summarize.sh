@@ -980,7 +980,7 @@ except Exception as e:
             fi
             
             OUT="$OUTPUT_DIR/screenshots/screenshot_$(printf "%02d" $((idx+1))).jpg"
-            ffmpeg -ss "$FFMPEG_TIME" -i "$VIDEO_FILE" -vframes 1 -q:v 2 "$OUT" -y 2>/dev/null && {
+            ffmpeg -ss "$FFMPEG_TIME" -i "$VIDEO_FILE" -vframes 1 -update 1 -q:v 2 "$OUT" -y 2>/dev/null && {
                 echo "   📸 $TIME → screenshot_$(printf "%02d" $((idx+1))).jpg"
                 SUCCESS_COUNT=$((SUCCESS_COUNT + 1))
             } || true
