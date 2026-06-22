@@ -954,10 +954,10 @@ except Exception as e:
         
         if [[ -n "$COVER_URL" ]]; then
             # 下载封面图作为所有截图
-            for i in "${!SCREENSHOT_TIMES[@]}"; do
-                OUT="$OUTPUT_DIR/screenshots/screenshot_$(printf "%02d" $((i+1))).jpg"
+            for ((ci=0; ci<${#SCREENSHOT_TIMES[@]}; ci++)); do
+                OUT="$OUTPUT_DIR/screenshots/screenshot_$(printf "%02d" $((ci+1))).jpg"
                 if curl -L -o "$OUT" "$COVER_URL" 2>/dev/null && [[ -s "$OUT" ]]; then
-                    echo "   📸 ${SCREENSHOT_TIMES[$i]} → 封面图 (视频不可用)"
+                    echo "   📸 ${SCREENSHOT_TIMES[$ci]} → 封面图 (视频不可用)"
                     SUCCESS_COUNT=$((SUCCESS_COUNT + 1))
                 fi
             done
@@ -967,8 +967,9 @@ except Exception as e:
     else
         # 正常截图流程
         set +e  # ffmpeg 截图允许失败，不中断循环
-        for i in "${!SCREENSHOT_TIMES[@]}"; do
-            TIME="${SCREENSHOT_TIMES[$i]}"
+        local total=${#SCREENSHOT_TIMES[@]}
+        for ((idx=0; idx<total; idx++)); do
+            TIME="${SCREENSHOT_TIMES[$idx]}"
             # 转换为 HH:MM:SS 格式（ffmpeg 需要）
             if [[ "$TIME" =~ ^([0-9]+):([0-9]+)$ ]]; then
                 FFMPEG_TIME="00:${BASH_REMATCH[1]}:${BASH_REMATCH[2]}"
@@ -978,9 +979,9 @@ except Exception as e:
                 FFMPEG_TIME="00:$TIME"
             fi
             
-            OUT="$OUTPUT_DIR/screenshots/screenshot_$(printf "%02d" $((i+1))).jpg"
+            OUT="$OUTPUT_DIR/screenshots/screenshot_$(printf "%02d" $((idx+1))).jpg"
             ffmpeg -ss "$FFMPEG_TIME" -i "$VIDEO_FILE" -vframes 1 -q:v 2 "$OUT" -y 2>/dev/null && {
-                echo "   📸 $TIME → screenshot_$(printf "%02d" $((i+1))).jpg"
+                echo "   📸 $TIME → screenshot_$(printf "%02d" $((idx+1))).jpg"
                 SUCCESS_COUNT=$((SUCCESS_COUNT + 1))
             } || true
         done
