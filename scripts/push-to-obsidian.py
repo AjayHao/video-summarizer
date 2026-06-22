@@ -131,7 +131,7 @@ def generate_frontmatter(meta: dict, tags: list, platform: str) -> str:
 
 
 def fix_image_refs(content: str, oss_urls: list, cover_url: str) -> str:
-    """修正图片引用：封面用 OSS URL，章节截图用 OSS URL（去重）"""
+    """修正图片引用：封面用 OSS URL，章节截图逐个替换 OSS URL，多余的移除"""
     # 1. 封面图 → OSS 封面 URL
     if cover_url:
         content = re.sub(
@@ -139,15 +139,17 @@ def fix_image_refs(content: str, oss_urls: list, cover_url: str) -> str:
             f'![视频封面]({cover_url})',
             content
         )
-    # 2. 章节截图 → 逐个替换为不同的 OSS URL（解决同一张图的问题）
+    # 2. 章节截图：逐个替换为 OSS URL，多余的删掉（不保留重复封面）
     if oss_urls:
-        url_iter = iter(oss_urls)
+        remaining = list(oss_urls)
         def replace_chapter(match):
-            try:
-                return f'![章节截图]({next(url_iter)})'
-            except StopIteration:
-                return match.group(0)
-        content = re.sub(r'!\[章节截图\]\([^)]+\)', replace_chapter, content)
+            if remaining:
+                return f'![章节截图]({remaining.pop(0)})'
+            return ''  # URL 用完，删除多余引用
+        content = re.sub(r'!\[章节截图\]\([^)]+\)\n?', replace_chapter, content)
+    else:
+        # 无 OSS URL，全部移除
+        content = re.sub(r'!\[章节截图\]\([^)]+\)\n?', '', content)
     return content
 
 
