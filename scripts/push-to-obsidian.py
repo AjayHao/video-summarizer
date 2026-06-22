@@ -6,9 +6,8 @@ push-to-obsidian.py - 将视频总结写入 Obsidian Vault
 功能：
 1. 读取 summary.md + metadata.json
 2. 生成 YAML frontmatter（Obsidian 兼容）
-3. 写入 Vault：3-输出-复盘/视频总结/
-4. 拷贝截图/封面到 attachments/ 子目录
-5. 转换图片引用为本地相对路径
+3. 写入 Vault：1-输入-收件箱/视频总结/
+4. 图片引用保留 OSS URL，不拷贝本地附件
 
 版本：v1.1.0
 """
@@ -17,7 +16,6 @@ import sys
 import os
 import re
 import json
-import shutil
 from pathlib import Path
 from datetime import datetime
 
@@ -35,13 +33,10 @@ if not VAULT.exists():
     print(f"❌ 错误：Obsidian Vault 路径不存在：{VAULT}")
     sys.exit(1)
 
-# Vault 内目标目录
 TARGET_DIR = VAULT / '1-输入-收件箱' / '视频总结'
-ATTACH_DIR = TARGET_DIR / 'attachments'
 
 
 def load_metadata(output_dir: Path) -> dict:
-    """加载 metadata.json"""
     meta_file = output_dir / 'metadata.json'
     if meta_file.exists():
         with open(meta_file, 'r', encoding='utf-8') as f:
@@ -49,8 +44,26 @@ def load_metadata(output_dir: Path) -> dict:
     return {}
 
 
+def load_oss_urls(output_dir: Path) -> list:
+    """加载 OSS 截图 URL 列表"""
+    urls_file = output_dir / 'screenshot_urls.txt'
+    if urls_file.exists():
+        with open(urls_file, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            return [x.get('oss_url', '') for x in data if x.get('success') and x.get('oss_url')]
+    return []
+
+
+def load_cover_url(output_dir: Path) -> str:
+    """加载 OSS 封面 URL"""
+    cover_file = output_dir / 'cover_url.txt'
+    if cover_file.exists():
+        data = json.loads(cover_file.read_text(encoding='utf-8'))
+        return data.get('oss_url', '')
+    return ''
+
+
 def extract_tags_string(summary_path: Path) -> list:
-    """从 summary.md 提取 Tags 行"""
     with open(summary_path, 'r', encoding='utf-8') as f:
         for line in f:
             if line.startswith('**Tags:**'):
@@ -59,7 +72,6 @@ def extract_tags_string(summary_path: Path) -> list:
 
 
 def detect_platform(meta: dict) -> str:
-    """从元数据识别平台"""
     platform = meta.get('platform', '')
     if platform:
         return platform
@@ -73,6 +85,14 @@ def detect_platform(meta: dict) -> str:
     if 'douyin.com' in url or 'iesdouyin.com' in url or 'v.douyin.com' in url:
         return 'douyin'
     return 'unknown'
+
+
+def safe_filename(title: str) -> str:
+    """生成安全的文件名（保留中文）"""
+    # 移除文件系统不允许的字符
+    safe = re.sub(r'[\\/:*?"<>|]', '', title)
+    # 截断过长文件名
+    return safe[:60]
 
 
 def generate_frontmatter(meta: dict, tags: list, platform: str) -> str:
@@ -89,14 +109,10 @@ def generate_frontmatter(meta: dict, tags: list, platform: str) -> str:
     else:
         date_str = datetime.now().strftime('%Y-%m-%d')
 
-    created = datetime.now().strftime('%Y-%m-%dT%H:%M:%S+08:00')
-
-    # 平台中文名
-    platform_names = {'bilibili': 'Bilibili', 'youtube': 'YouTube', 'xhs': '小红书', 'douyin': '抖音'}
-    platform_cn = platform_names.get(platform, platform)
+    created = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
     lines = ['---']
-    lines.append(f'title: "【{platform_cn}】{title}"')
+    lines.append(f'title: "{title}"')
     if tags:
         lines.append(f'tags: [{", ".join(tags)}]')
     lines.append(f'platform: {platform}')
@@ -114,73 +130,49 @@ def generate_frontmatter(meta: dict, tags: list, platform: str) -> str:
     return '\n'.join(lines)
 
 
-def copy_attachments(output_dir: Path) -> list:
-    """拷贝截图和封面到 attachments/"""
-    ATTACH_DIR.mkdir(parents=True, exist_ok=True)
-    copied = []
-
-    # 截图
-    screenshots_dir = output_dir / 'screenshots'
-    if screenshots_dir.exists():
-        for img in sorted(screenshots_dir.iterdir()):
-            if img.suffix.lower() in {'.jpg', '.jpeg', '.png', '.gif', '.webp'}:
-                dest = ATTACH_DIR / img.name
-                shutil.copy2(img, dest)
-                copied.append(img.name)
-
-    # 封面
-    cover_file = output_dir / 'cover.jpg'
-    if cover_file.exists():
-        dest = ATTACH_DIR / 'cover.jpg'
-        shutil.copy2(cover_file, dest)
-        if 'cover.jpg' not in copied:
-            copied.append('cover.jpg')
-
-    return copied
-
-
-def convert_image_refs(content: str) -> str:
-    """将 HTTP 图片引用转换为本地 attachments/ 相对路径，并移除 OSS URL 引用"""
-    # 1. 移除封面图中的 HTTP URL 引用（将被本地 cover.jpg 替代）
-    #    ![视频封面](https://...) → ![视频封面](attachments/cover.jpg)
-    content = re.sub(
-        r'!\[视频封面\]\(https?://[^)]+\)',
-        '![视频封面](attachments/cover.jpg)',
-        content
-    )
-
-    # 2. 保留本地 attachments/ 引用不动
-    # 3. 章节截图的 OSS URL 保留（远程可见），但可选添加本地副本引用
-    #    对于章节截图，由于它们是外部 OSS URL，不转换为本地路径
-
+def fix_image_refs(content: str, oss_urls: list, cover_url: str) -> str:
+    """修正图片引用：封面用 OSS URL，章节截图用 OSS URL（去重）"""
+    # 1. 封面图 → OSS 封面 URL
+    if cover_url:
+        content = re.sub(
+            r'!\[视频封面\]\([^)]+\)',
+            f'![视频封面]({cover_url})',
+            content
+        )
+    # 2. 章节截图 → 逐个替换为不同的 OSS URL（解决同一张图的问题）
+    if oss_urls:
+        url_iter = iter(oss_urls)
+        def replace_chapter(match):
+            try:
+                return f'![章节截图]({next(url_iter)})'
+            except StopIteration:
+                return match.group(0)
+        content = re.sub(r'!\[章节截图\]\([^)]+\)', replace_chapter, content)
     return content
 
 
-def strip_existing_frontmatter(content: str) -> str:
-    """移除 Markdown 中已有的元数据头部（Tags/Author/Cover 行）"""
+def strip_metadata_header(content: str) -> str:
+    """移除 Markdown 中的元数据头部（Tags/Author/Cover 行）"""
     lines = content.split('\n')
     result = []
-    skip_meta = False
-
+    skip = False
     for line in lines:
-        if line.strip() == '---' and not skip_meta:
-            skip_meta = True
+        if line.strip() == '---' and not skip:
+            skip = True
             continue
-        if skip_meta:
+        if skip:
             if line.startswith('**Tags:**') or line.startswith('**Author:**') or line.startswith('**Cover:**'):
                 continue
             if line.startswith('!['):
-                continue  # 跳过旧封面图
+                continue
             if line.strip() == '---':
                 continue
-            skip_meta = False
+            skip = False
         result.append(line)
-
     return '\n'.join(result)
 
 
 def push_to_obsidian(output_dir: str) -> bool:
-    """主流程：将视频总结写入 Obsidian Vault"""
     out = Path(output_dir)
     summary_file = out / 'summary.md'
 
@@ -188,51 +180,34 @@ def push_to_obsidian(output_dir: str) -> bool:
         print(f"❌ summary.md 不存在：{summary_file}")
         return False
 
-    # 加载数据
     meta = load_metadata(out)
     tags = extract_tags_string(summary_file)
+    oss_urls = load_oss_urls(out)
+    cover_url = load_cover_url(out)
     platform = detect_platform(meta)
 
-    # 生成文件名
-    video_id = meta.get('id', '') or re.sub(r'[^a-zA-Z0-9_-]', '', meta.get('title', 'video'))[:30]
-    date_str = datetime.now().strftime('%Y%m%d')
-    filename = f"{platform}_{video_id}_{date_str}.md"
+    # 文件名：用视频标题
+    title = meta.get('title', 'video')
+    filename = f"{safe_filename(title)}.md"
 
-    # 准备目录
     TARGET_DIR.mkdir(parents=True, exist_ok=True)
-    ATTACH_DIR.mkdir(parents=True, exist_ok=True)
 
-    # 拷贝附件
-    copied_files = copy_attachments(out)
-    if copied_files:
-        print(f"   📎 附件：{', '.join(copied_files)}")
+    # 读取内容
+    raw_content = summary_file.read_text(encoding='utf-8')
 
-    # 读取并处理内容
-    with open(summary_file, 'r', encoding='utf-8') as f:
-        raw_content = f.read()
-
-    # 剥离旧元数据头部
-    body = strip_existing_frontmatter(raw_content)
-
-    # 转换图片引用
-    body = convert_image_refs(body)
-
-    # 生成 frontmatter
+    # 处理
+    body = strip_metadata_header(raw_content)
+    body = fix_image_refs(body, oss_urls, cover_url)
     frontmatter = generate_frontmatter(meta, tags, platform)
 
-    # 组合最终内容
-    final_content = frontmatter + body
-
-    # 写入 Vault
+    # 写入
     target_file = TARGET_DIR / filename
-    with open(target_file, 'w', encoding='utf-8') as f:
-        f.write(final_content)
+    target_file.write_text(frontmatter + body, encoding='utf-8')
 
-    # 输出摘要
     print(f"   ✅ Obsidian 存储完成")
     print(f"   📄 {target_file}")
     print(f"   🏷️  标签：{', '.join(tags) if tags else '(无)'}")
-    print(f"   📎 附件：{len(copied_files)} 个")
+    print(f"   🖼️  截图引用：{len(oss_urls)} 张（OSS URL）")
 
     return True
 
@@ -243,20 +218,17 @@ def main():
         sys.exit(1)
 
     output_dir = sys.argv[1]
-
     print("📓 Obsidian 本地存储")
     print(f"   Vault：{VAULT}")
 
     success = push_to_obsidian(output_dir)
-
     if success:
         print()
         print("=" * 50)
         print("✨ Obsidian 写入完成！")
         print("=" * 50)
         return 0
-    else:
-        return 1
+    return 1
 
 
 if __name__ == '__main__':
