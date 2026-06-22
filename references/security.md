@@ -9,7 +9,7 @@
 | 文件/路径 | 用途 | 敏感性 | 用户控制 |
 |-----------|------|--------|----------|
 | `~/.cookies/bilibili_cookies.txt` | B 站官方字幕获取 | 高（Session Token） | 用户主动扫码生成，可随时删除 |
-| `~/.hermes/.env` (优先) / `~/.openclaw/.env` (fallback) | API Keys 存储 | 高 | 用户自行配置，skill 不修改 |
+| `$AGENT_HOME/.env` | API Keys 存储 | 高 | 用户自行配置，skill 不修改 |
 | `/tmp/video-summarizer-*/` | 临时输出 | 低 | 处理完成后可手动清理 |
 
 ## 外部服务端点

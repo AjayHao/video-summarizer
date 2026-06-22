@@ -2,6 +2,8 @@
 # download-audio.sh - Plan B: 下载音频用于语音转录
 # 用法：./download-audio.sh <视频 URL> [输出文件]
 
+# Python 解释器（Ubuntu 默认 python3，Windows Hermes 覆盖 PYTHON=python）
+PYTHON="${PYTHON:-python3}"
 set -e
 
 VIDEO_URL="$1"
@@ -55,7 +57,7 @@ if [[ "$PLATFORM" == "douyin" ]]; then
         log_info "抖音平台：使用专用工具下载..."
         
         # 获取下载链接
-        VIDEO_INFO=$(python3 "$DOUYIN_SCRIPT" --link "$VIDEO_URL" --action info 2>&1)
+        VIDEO_INFO=$($PYTHON "$DOUYIN_SCRIPT" --link "$VIDEO_URL" --action info 2>&1)
         DOWNLOAD_URL=$(echo "$VIDEO_INFO" | grep "下载链接" | sed 's/下载链接：//')
         
         if [[ -n "$DOWNLOAD_URL" ]]; then

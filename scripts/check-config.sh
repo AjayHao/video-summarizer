@@ -3,14 +3,20 @@
 # 用法：./check-config.sh
 # 版本：v1.1.0
 
-# 环境文件路径（优先 ~/.hermes/.env，fallback ~/.openclaw/.env）
-if [ -f "$HOME/.hermes/.env" ]; then
-    ENV_FILE="$HOME/.hermes/.env"
-elif [ -f "$HOME/.openclaw/.env" ]; then
-    ENV_FILE="$HOME/.openclaw/.env"
-else
-    ENV_FILE="$HOME/.hermes/.env"
+# ====== $AGENT_HOME 归一入口 ======
+if [ -z "$AGENT_HOME" ]; then
+    if [ -n "$HERMES_HOME" ]; then
+        export AGENT_HOME="$HERMES_HOME"
+    elif [ -d "$HOME/.hermes" ]; then
+        export AGENT_HOME="$HOME/.hermes"
+    elif [ -d "$HOME/.openclaw" ]; then
+        export AGENT_HOME="$HOME/.openclaw"
+    else
+        export AGENT_HOME="$HOME/.hermes"
+    fi
 fi
+_ah() { echo "$AGENT_HOME" | sed 's|\\|/|g' | sed 's|^\([A-Za-z]\):|/\1|'; }
+ENV_FILE="$(_ah)/.env"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 PASS=0
@@ -37,11 +43,14 @@ check_env() {
 
 check_py() {
     local pkg=$1 install=$2
-    if python3 -c "import $pkg" &>/dev/null; then
+    # 跨平台：优先 python，Windows 上 python3 可能是 Store 存根
+    local py_cmd="python"
+    command -v python &>/dev/null || py_cmd="python3"
+    if $py_cmd -c "import $pkg" &>/dev/null; then
         echo "✅ $pkg"
         PASS=$((PASS + 1))
     else
-        echo "❌ $pkg (运行：pip3 install $install)"
+        echo "❌ $pkg (运行：pip install $install)"
         FAIL=$((FAIL + 1))
     fi
 }
@@ -49,7 +58,7 @@ check_py() {
 echo "=== 依赖工具 ==="
 command -v yt-dlp &>/dev/null && { echo "✅ yt-dlp ($(yt-dlp --version))"; PASS=$((PASS + 1)); } || { echo "❌ yt-dlp (运行：pip3 install yt-dlp)"; FAIL=$((FAIL + 1)); }
 command -v ffmpeg &>/dev/null && { echo "✅ ffmpeg"; PASS=$((PASS + 1)); } || { echo "❌ ffmpeg (运行：apt install ffmpeg)"; FAIL=$((FAIL + 1)); }
-command -v python3 &>/dev/null && { echo "✅ $(python3 --version)"; PASS=$((PASS + 1)); } || { echo "❌ python3"; FAIL=$((FAIL + 1)); exit 1; }
+command -v python &>/dev/null && { echo "✅ $(python --version 2>&1)"; PASS=$((PASS + 1)); } || { echo "❌ python"; FAIL=$((FAIL + 1)); exit 1; }
 
 echo ""
 echo "=== Python 依赖 ==="
@@ -79,7 +88,7 @@ if [[ -z "$MISSING_VARS" ]]; then
     PASS=$((PASS + 3))
 else
     echo "❌ LLM 配置不完整，缺少：$MISSING_VARS"
-    echo "   └─ 请在 ~/.hermes/.env 或 ~/.openclaw/.env 中配置："
+    echo "   └─ 在 \$AGENT_HOME/.env 中配置："
     echo "      LLM_API_KEY=your_api_key"
     echo "      LLM_BASE_URL=https://api.deepseek.com"
     echo "      LLM_MODEL=deepseek-v4-pro"
@@ -178,7 +187,8 @@ if [[ "$CONFIG_OK" == "true" && $FAIL -eq 0 ]]; then
     echo ""
     echo "选项:"
     echo "  --verbose     显示详细日志"
-    echo "  --push        自动推送到 Notion"
+    echo "  --notion      推送到 Notion（可选）"
+    echo "  --no-obsidian 禁用 Obsidian 推送"
     echo "  --keep-video  保留视频文件"
     echo ""
     echo "📱 扫码登录 (更新 B 站 Cookies):"
@@ -188,8 +198,8 @@ else
     echo "❌ 配置不完整，请修复上方标 ❌ 的项目"
     echo ""
     echo "修复建议:"
-    echo "  1. 编辑配置文件：~/.hermes/.env 或 ~/.openclaw/.env"
-    echo "  2. 安装缺失依赖：pip3 install requests oss2 python-dotenv"
+    echo "  1. 编辑配置文件：\$AGENT_HOME/.env 或 \$HERMES_HOME/.env"
+    echo "  2. 安装缺失依赖：pip install requests oss2 python-dotenv"
     echo "  3. 扫码登录：$SCRIPT_DIR/bili-login.sh"
     echo "  4. 重新运行检查：$SCRIPT_DIR/check-config.sh"
     exit 1

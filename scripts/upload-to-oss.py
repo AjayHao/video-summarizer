@@ -26,13 +26,8 @@ import re
 import json
 import argparse
 from pathlib import Path
-
-# 读取环境变量（优先 ~/.hermes/.env，fallback ~/.openclaw/.env）
 from dotenv import load_dotenv
-env_path = Path.home() / '.hermes' / '.env'
-if not env_path.exists():
-    env_path = Path.home() / '.openclaw' / '.env'
-load_dotenv(env_path)
+import env_helper  # 统一初始化 AGENT_HOME + 加载 .env
 
 # 阿里云 OSS 配置
 ALIYUN_OSS_AK = os.getenv('ALIYUN_OSS_AK')

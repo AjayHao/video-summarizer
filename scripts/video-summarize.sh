@@ -5,6 +5,29 @@
 
 set -e
 
+# Python 解释器（Ubuntu 默认 python3，Windows Hermes 覆盖 PYTHON=python）
+PYTHON="${PYTHON:-python3}"
+
+# ====== $AGENT_HOME 归一入口 ======
+if [ -z "$AGENT_HOME" ]; then
+    if [ -n "$HERMES_HOME" ]; then
+        export AGENT_HOME="$HERMES_HOME"
+    elif [ -d "$HOME/.hermes" ]; then
+        export AGENT_HOME="$HOME/.hermes"
+    elif [ -d "$HOME/.openclaw" ]; then
+        export AGENT_HOME="$HOME/.openclaw"
+    else
+        export AGENT_HOME="$HOME/.hermes"
+    fi
+fi
+_ah() {
+    # 跨平台路径转换：MSYS/Windows 转换反斜杠，Linux 原样返回
+    case "$(uname -s 2>/dev/null)" in
+        MINGW*|MSYS*) echo "$AGENT_HOME" | sed 's|\\|/|g' | sed 's|^\([A-Za-z]\):|/\1|' ;;
+        *) echo "$AGENT_HOME" ;;
+    esac
+}
+
 # ============== 错误处理与日志 ==============
 
 # 日志级别函数（ERROR_LOG 为空时不写入文件）
@@ -273,14 +296,8 @@ fi
 
 mkdir -p "$OUTPUT_DIR"
 
-# 安全校验：.env 文件权限（优先 ~/.hermes/.env，fallback ~/.openclaw/.env）
-if [ -f "$HOME/.hermes/.env" ]; then
-    ENV_FILE_CHECK="$HOME/.hermes/.env"
-elif [ -f "$HOME/.openclaw/.env" ]; then
-    ENV_FILE_CHECK="$HOME/.openclaw/.env"
-else
-    ENV_FILE_CHECK="$HOME/.hermes/.env"
-fi
+# 安全校验：.env 文件权限
+ENV_FILE_CHECK="$(_ah)/.env"
 if [[ -f "$ENV_FILE_CHECK" ]]; then
     ENV_PERMS=$(stat -c '%a' "$ENV_FILE_CHECK" 2>/dev/null)
     if [[ "$ENV_PERMS" != "600" && "$ENV_PERMS" != "400" ]]; then
@@ -345,7 +362,7 @@ save_progress() {
     VIDEO_URL="$VIDEO_URL" \
     OUTPUT_DIR="$OUTPUT_DIR" \
     PROGRESS_FILE="$PROGRESS_FILE" \
-    python3 -c "
+    $PYTHON -c "
 import os, json
 data = {
     'video_url': os.environ['VIDEO_URL'],
@@ -363,7 +380,7 @@ with open(os.environ['PROGRESS_FILE'], 'w') as f:
 check_progress() {
     if [[ "$RESUME" == "true" && -f "$PROGRESS_FILE" ]]; then
         local last_step
-        last_step=$(PROGRESS_FILE="$PROGRESS_FILE" python3 -c "
+        last_step=$(PROGRESS_FILE="$PROGRESS_FILE" $PYTHON -c "
 import os, json
 with open(os.environ['PROGRESS_FILE']) as f:
     print(json.load(f).get('current_step', ''))
@@ -395,10 +412,10 @@ else
             log_info "抖音平台：使用专用工具获取元数据..."
             
             # 获取视频信息（JSON 格式，便于解析）
-            VIDEO_JSON=$(python3 "$DOUYIN_SCRIPT" --link "$VIDEO_URL" --action info --json 2>/dev/null)
+            VIDEO_JSON=$($PYTHON "$DOUYIN_SCRIPT" --link "$VIDEO_URL" --action info --json 2>/dev/null)
             
             # 使用 stdin 管道传递 JSON，环境变量传递路径（无 shell 注入）
-            echo "$VIDEO_JSON" | VIDEO_URL="$VIDEO_URL" OUTPUT_DIR="$OUTPUT_DIR" python3 -c "
+            echo "$VIDEO_JSON" | VIDEO_URL="$VIDEO_URL" OUTPUT_DIR="$OUTPUT_DIR" $PYTHON -c "
 import sys, json, os
 
 try:
@@ -451,7 +468,7 @@ except Exception as e:
         
         # 为小红书提取 upload_date（从笔记 ID 解析，环境变量传递路径）
         if [[ "$PLATFORM" == "xhs" ]]; then
-            OUTPUT_DIR="$OUTPUT_DIR" python3 -c "
+            OUTPUT_DIR="$OUTPUT_DIR" $PYTHON -c "
 import json, os
 from datetime import datetime
 
@@ -476,11 +493,11 @@ with open(os.path.join(output_dir, 'metadata.json'), 'w') as f:
         fi
     fi
     
-    TITLE=$(python3 -c "import json; print(json.load(open('$OUTPUT_DIR/metadata.json')).get('title', 'Unknown'))" 2>/dev/null || echo "Unknown")
-    UPLOADER=$(python3 -c "import json; print(json.load(open('$OUTPUT_DIR/metadata.json')).get('uploader', 'Unknown'))" 2>/dev/null || echo "Unknown")
-    DURATION=$(python3 -c "import json; print(json.load(open('$OUTPUT_DIR/metadata.json')).get('duration_string', 'Unknown'))" 2>/dev/null || echo "Unknown")
-    DURATION_SEC=$(python3 -c "import json; print(int(json.load(open('$OUTPUT_DIR/metadata.json')).get('duration', 0)))" 2>/dev/null || echo "0")
-    THUMBNAIL=$(python3 -c "import json; print(json.load(open('$OUTPUT_DIR/metadata.json')).get('thumbnail', ''))" 2>/dev/null || echo "")
+    TITLE=$($PYTHON -c "import json; print(json.load(open('$OUTPUT_DIR/metadata.json')).get('title', 'Unknown'))" 2>/dev/null || echo "Unknown")
+    UPLOADER=$($PYTHON -c "import json; print(json.load(open('$OUTPUT_DIR/metadata.json')).get('uploader', 'Unknown'))" 2>/dev/null || echo "Unknown")
+    DURATION=$($PYTHON -c "import json; print(json.load(open('$OUTPUT_DIR/metadata.json')).get('duration_string', 'Unknown'))" 2>/dev/null || echo "Unknown")
+    DURATION_SEC=$($PYTHON -c "import json; print(int(json.load(open('$OUTPUT_DIR/metadata.json')).get('duration', 0)))" 2>/dev/null || echo "0")
+    THUMBNAIL=$($PYTHON -c "import json; print(json.load(open('$OUTPUT_DIR/metadata.json')).get('thumbnail', ''))" 2>/dev/null || echo "")
     
     echo "✅ 元数据完成 | 标题：$TITLE | UP 主：$UPLOADER | 时长：$DURATION"
     [[ "$VERBOSE" == "true" ]] && echo "   📄 $OUTPUT_DIR/metadata.json"
@@ -524,7 +541,7 @@ else
             DOUYIN_SCRIPT="$SCRIPT_DIR/douyin_downloader.py"
             
             if [[ -f "$DOUYIN_SCRIPT" ]]; then
-                python3 "$DOUYIN_SCRIPT" --link "$VIDEO_URL" --action info > "$VIDEO_LOG" 2>&1
+                $PYTHON "$DOUYIN_SCRIPT" --link "$VIDEO_URL" --action info > "$VIDEO_LOG" 2>&1
                 DOWNLOAD_URL=$(grep "下载链接" "$VIDEO_LOG" | sed 's/下载链接：//')
                 
                 if [[ -n "$DOWNLOAD_URL" ]]; then
@@ -702,7 +719,7 @@ else
             "$SCRIPT_DIR/download-audio.sh" "$VIDEO_URL" "$AUDIO_FILE"
             
             # 语音转录
-            python3 "$SCRIPT_DIR/transcribe-audio.py" "$AUDIO_FILE" "$SUBTITLE_FILE"
+            $PYTHON "$SCRIPT_DIR/transcribe-audio.py" "$AUDIO_FILE" "$SUBTITLE_FILE"
             
             SUBTITLE_SOURCE="语音转录 (Plan B)"
             log_success "[字幕任务] 语音转录完成"
@@ -800,9 +817,9 @@ else
     
     if [[ -f "$AI_SCRIPT" ]]; then
         if [[ "$VERBOSE" == "true" ]]; then
-            python3 "$AI_SCRIPT" "$SUBTITLE_FILE" "$OUTPUT_DIR/metadata.json" "$TEMP_SUMMARY" 2>&1 | tee -a "$AI_LOG"
+            $PYTHON "$AI_SCRIPT" "$SUBTITLE_FILE" "$OUTPUT_DIR/metadata.json" "$TEMP_SUMMARY" 2>&1 | tee -a "$AI_LOG"
         else
-            python3 "$AI_SCRIPT" "$SUBTITLE_FILE" "$OUTPUT_DIR/metadata.json" "$TEMP_SUMMARY" 2>/dev/null
+            $PYTHON "$AI_SCRIPT" "$SUBTITLE_FILE" "$OUTPUT_DIR/metadata.json" "$TEMP_SUMMARY" 2>/dev/null
         fi
         
         if [[ -f "$AI_JSON_FILE" ]]; then
@@ -852,7 +869,7 @@ else
             DURATION_SEC=600
         fi
         # 使用环境变量传递路径和数值（无 shell 注入）
-        SCREENSHOT_TIMES=($(AI_JSON="$AI_JSON" DURATION_SEC="$DURATION_SEC" MAX_SCREENSHOTS="$MAX_SCREENSHOTS" python3 -c "
+        SCREENSHOT_TIMES=($(AI_JSON="$AI_JSON" DURATION_SEC="$DURATION_SEC" MAX_SCREENSHOTS="$MAX_SCREENSHOTS" $PYTHON -c "
 import json, os, sys
 
 try:
@@ -927,7 +944,7 @@ except Exception as e:
     if [[ ! -f "$VIDEO_FILE" ]]; then
         log_warn "视频文件不存在，使用封面图代替截图"
         # 从元数据获取封面 URL
-        COVER_URL=$(python3 -c "import json; print(json.load(open('$OUTPUT_DIR/metadata.json')).get('thumbnail', ''))" 2>/dev/null)
+        COVER_URL=$($PYTHON -c "import json; print(json.load(open('$OUTPUT_DIR/metadata.json')).get('thumbnail', ''))" 2>/dev/null)
         
         if [[ -n "$COVER_URL" ]]; then
             # 下载封面图作为所有截图
@@ -987,15 +1004,20 @@ else
 if [[ -f "$OSS_SCRIPT" ]]; then
     # 使用 auto 模式，自动识别平台并生成规范路径
     # 错误日志保存到 oss_upload.log
-    python3 "$OSS_SCRIPT" auto "$OUTPUT_DIR/screenshots" \
+    $PYTHON "$OSS_SCRIPT" auto "$OUTPUT_DIR/screenshots" \
         --video-url "$VIDEO_URL" --metadata "$OUTPUT_DIR/metadata.json" \
         --public --format json > "$OSS_URLS_FILE" 2> "$OSS_LOG_FILE"
     
     EXIT_CODE=$?
     
     if [[ -s "$OSS_URLS_FILE" ]]; then
-        URL_COUNT=$(python3 -c "import json; print(len([x for x in json.load(open('$OSS_URLS_FILE')) if x.get('success')]))" 2>/dev/null || echo "0")
-        [[ "$URL_COUNT" -gt 0 ]] && echo "✅ OSS 上传成功 | $URL_COUNT 张" || { echo "⚠️  OSS 上传失败"; echo "[]" > "$OSS_URLS_FILE"; }
+        URL_COUNT=$(OSS_URLS_FILE="$OSS_URLS_FILE" $PYTHON -c "
+import os, json
+with open(os.environ['OSS_URLS_FILE']) as f:
+    data = json.load(f)
+print(len([x for x in data if x.get('success')]))
+" 2>/dev/null || echo "0")
+        [[ "$URL_COUNT" -gt 0 ]] && echo "✅ OSS 上传成功 | $URL_COUNT 张" || { echo "⚠️  OSS 上传失败，使用本地路径"; echo "[]" > "$OSS_URLS_FILE"; }
     else
         echo "⚠️  OSS 上传失败，使用本地路径"
         echo "[]" > "$OSS_URLS_FILE"
@@ -1004,15 +1026,15 @@ if [[ -f "$OSS_SCRIPT" ]]; then
     # 上传封面图
     COVER_FILE="$OUTPUT_DIR/cover_url.txt"
     echo "🖼️  上传封面图..." >> "$OSS_LOG_FILE"
-    python3 "$OSS_SCRIPT" thumbnail "$OUTPUT_DIR/metadata.json" \
+    $PYTHON "$OSS_SCRIPT" thumbnail "$OUTPUT_DIR/metadata.json" \
         --public --format json > "$COVER_FILE" 2>> "$OSS_LOG_FILE"
     
     if [[ -f "$COVER_FILE" ]]; then
-        COVER_URL=$(python3 -c "import json; print(json.load(open('$COVER_FILE')).get('oss_url', ''))" 2>/dev/null)
+        COVER_URL=$($PYTHON -c "import json; print(json.load(open('$COVER_FILE')).get('oss_url', ''))" 2>/dev/null)
         if [[ -n "$COVER_URL" ]]; then
             echo "✅ 封面上传成功：$COVER_URL" >> "$OSS_LOG_FILE"
             # 更新元数据中的 thumbnail 字段（环境变量传递，无 shell 注入）
-            OUTPUT_DIR="$OUTPUT_DIR" COVER_URL="$COVER_URL" python3 -c "
+            OUTPUT_DIR="$OUTPUT_DIR" COVER_URL="$COVER_URL" $PYTHON -c "
 import json, os
 with open(os.path.join(os.environ['OUTPUT_DIR'], 'metadata.json'), 'r+', encoding='utf-8') as f:
     data = json.load(f)
@@ -1038,7 +1060,7 @@ echo "📝 Step 7: 渲染 Markdown..."
 SUMMARY_FILE="$OUTPUT_DIR/summary.md"
 
 # 重新调用 AI 脚本，让它读取已上传的截图 URL 并渲染最终 Markdown
-python3 "$AI_SCRIPT" "$SUBTITLE_FILE" "$OUTPUT_DIR/metadata.json" "$SUMMARY_FILE" 2>/dev/null || true
+$PYTHON "$AI_SCRIPT" "$SUBTITLE_FILE" "$OUTPUT_DIR/metadata.json" "$SUMMARY_FILE" 2>/dev/null || true
 
 if [[ -f "$SUMMARY_FILE" ]]; then
     echo "✅ Markdown 渲染完成"
@@ -1074,7 +1096,7 @@ else
 fi
 
 # 截图状态
-[[ $(python3 -c "import json; print(len([x for x in json.load(open('$OSS_URLS_FILE')) if x.get('success')]))" 2>/dev/null || echo 0) -gt 0 ]] && echo "📸 截图：✅ 已上传" || echo "📸 截图：⚠️  本地"
+[[ $($PYTHON -c "import json; print(len([x for x in json.load(open('$OSS_URLS_FILE')) if x.get('success')]))" 2>/dev/null || echo 0) -gt 0 ]] && echo "📸 截图：✅ 已上传" || echo "📸 截图：⚠️  本地"
 echo ""
 
 # Step 9: 推送到 Notion（仅在 --notion 时触发）
@@ -1091,13 +1113,7 @@ if [[ "$PUSH_NOTION" == "true" ]]; then
         NOTION_KEY="$NOTION_API_KEY"
         log_info "   使用环境变量配置"
     else
-        if [ -f "$HOME/.hermes/.env" ]; then
-            ENV_FILE="$HOME/.hermes/.env"
-        elif [ -f "$HOME/.openclaw/.env" ]; then
-            ENV_FILE="$HOME/.openclaw/.env"
-        else
-            ENV_FILE=""
-        fi
+        ENV_FILE="$(_ah)/.env"
         if [[ -f "$ENV_FILE" ]]; then
             ENV_DB_ID=$(grep -E "^NOTION_VIDEO_SUMMARY_DATABASE_ID=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2 | tr -d '"' | tr -d "'")
             ENV_KEY=$(grep -E "^NOTION_API_KEY=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2 | tr -d '"' | tr -d "'")
@@ -1113,7 +1129,7 @@ if [[ "$PUSH_NOTION" == "true" ]]; then
     if [[ "$NOTION_CONFIGURED" == "true" ]]; then
         save_progress "9" "running"
         NOTION_VIDEO_SUMMARY_DATABASE_ID="$NOTION_DB_ID" \
-        python3 "$SCRIPT_DIR/push-to-notion.py" "$SUMMARY_FILE"
+        $PYTHON "$SCRIPT_DIR/push-to-notion.py" "$SUMMARY_FILE"
         PUSH_EXIT=$?
         if [[ $PUSH_EXIT -eq 0 ]]; then
             echo "   ✅ Notion 推送成功"
@@ -1124,7 +1140,7 @@ if [[ "$PUSH_NOTION" == "true" ]]; then
         fi
     else
         echo "   ⚠️  Notion 未配置，跳过"
-        echo "   💡 在 ~/.hermes/.env 中配置 NOTION_API_KEY + NOTION_VIDEO_SUMMARY_DATABASE_ID"
+        echo "   💡 在 \$AGENT_HOME/.env 中配置 NOTION_API_KEY + NOTION_VIDEO_SUMMARY_DATABASE_ID"
     fi
     echo ""
 fi
@@ -1134,7 +1150,7 @@ if [[ "$PUSH_OBSIDIAN" == "true" ]]; then
     echo "📓 Step 10: Obsidian 本地存储..."
     save_progress "10" "running"
     
-    python3 "$SCRIPT_DIR/push-to-obsidian.py" "$OUTPUT_DIR"
+    $PYTHON "$SCRIPT_DIR/push-to-obsidian.py" "$OUTPUT_DIR"
     OBS_EXIT=$?
     
     if [[ $OBS_EXIT -eq 0 ]]; then

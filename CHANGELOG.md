@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🏗️ 架构优化
 
-- **品牌/路径去硬编码**：所有脚本优先读取 `~/.hermes/.env`，fallback `~/.openclaw/.env`，适配 Hermes Agent 平台
+- **品牌/路径去硬编码**：所有脚本优先读取 `$AGENT_HOME/.env`，fallback `$HERMES_HOME/.env` → `~/.hermes/.env` → `~/.openclaw/.env`
 - **文档拆分**：SKILL.md 从 588 行精简至 ~290 行（-51%），安全/平台/故障排查拆分到 `references/`
 - **代码重构**：`push-to-notion.py` 四平台分支 → 4 个公共函数（`_extract_title_common` / `_extract_note` / `_extract_tags` / `_extract_author`），1010→842 行（-17%）
 

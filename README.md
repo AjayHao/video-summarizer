@@ -28,7 +28,7 @@ pip3 install requests oss2 python-dotenv
 
 ### 第二步：配置 API Keys
 
-编辑 `~/.hermes/.env`（或 `~/.openclaw/.env`，兼容旧版）：
+编辑 `$AGENT_HOME/.env`（优先）→ `$HERMES_HOME/.env` → `~/.hermes/.env`：
 
 ```bash
 # 必需 - LLM AI 分析（OpenAI 兼容接口）
@@ -179,7 +179,7 @@ echo $GROQ_API_KEY
 更新 API Key：
 
 ```bash
-# 编辑 ~/.hermes/.env 或 ~/.openclaw/.env
+# 编辑 $HERMES_HOME/.env 或 ~/.hermes/.env 或 ~/.openclaw/.env
 NOTION_API_KEY=your_new_key
 ```
 

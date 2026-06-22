@@ -44,12 +44,8 @@ class LLMClient:
 
     @classmethod
     def from_env(cls):
-        """从环境变量构建客户端。优先读取 ~/.hermes/.env，fallback ~/.openclaw/.env。"""
-        from dotenv import load_dotenv
-        env_path = Path.home() / '.hermes' / '.env'
-        if not env_path.exists():
-            env_path = Path.home() / '.openclaw' / '.env'
-        load_dotenv(env_path)
+        """从环境变量构建客户端。配置由 env_helper 统一加载。"""
+        import env_helper  # 自动初始化 AGENT_HOME + load_dotenv
 
         api_key = os.getenv('LLM_API_KEY', '').strip()
         base_url = os.getenv('LLM_BASE_URL', '').strip()

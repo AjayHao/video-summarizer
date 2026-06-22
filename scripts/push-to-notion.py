@@ -14,12 +14,7 @@ import requests
 from pathlib import Path
 from datetime import datetime
 from dotenv import load_dotenv
-
-# 读取环境变量（优先 ~/.hermes/.env，fallback ~/.openclaw/.env）
-env_path = Path.home() / '.hermes' / '.env'
-if not env_path.exists():
-    env_path = Path.home() / '.openclaw' / '.env'
-load_dotenv(env_path)
+import env_helper  # 统一初始化 AGENT_HOME + 加载 .env
 
 NOTION_API_KEY = os.getenv('NOTION_API_KEY')
 NOTION_DATABASE_ID = os.getenv('NOTION_VIDEO_SUMMARY_DATABASE_ID')

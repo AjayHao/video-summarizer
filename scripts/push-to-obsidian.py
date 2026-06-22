@@ -21,17 +21,13 @@ import shutil
 from pathlib import Path
 from datetime import datetime
 
-# 读取环境变量（优先 ~/.hermes/.env，fallback ~/.openclaw/.env）
 from dotenv import load_dotenv
-env_path = Path.home() / '.hermes' / '.env'
-if not env_path.exists():
-    env_path = Path.home() / '.openclaw' / '.env'
-load_dotenv(env_path)
+import env_helper  # 统一初始化 AGENT_HOME + 加载 .env
 
 VAULT_PATH = os.getenv('OBSIDIAN_VAULT_PATH', '')
 if not VAULT_PATH:
     print("❌ 错误：未配置 OBSIDIAN_VAULT_PATH，跳过 Obsidian 存储")
-    print("   在 ~/.hermes/.env 中添加：OBSIDIAN_VAULT_PATH=你的Vault路径")
+    print("   在 $AGENT_HOME/.env 中添加：OBSIDIAN_VAULT_PATH=你的Vault路径")
     sys.exit(1)
 
 VAULT = Path(VAULT_PATH)

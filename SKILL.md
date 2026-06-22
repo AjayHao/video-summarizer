@@ -79,7 +79,7 @@ metadata:
 pip3 install requests oss2 python-dotenv
 # 系统依赖: ffmpeg (>=6.1), yt-dlp (>=2026.03.17)
 
-# 2. 配置环境变量 (~/.hermes/.env 或 ~/.openclaw/.env)
+# 2. 配置环境变量 ($AGENT_HOME/.env)
 LLM_API_KEY=your_api_key
 LLM_BASE_URL=https://api.deepseek.com
 LLM_MODEL=deepseek-v4-pro
@@ -271,7 +271,7 @@ output/
 ### 配置
 
 ```bash
-# 在 ~/.hermes/.env 中添加
+# 在 $AGENT_HOME/.env 中添加
 # macOS
 OBSIDIAN_VAULT_PATH=/Users/name/ObsidianVault
 # Windows

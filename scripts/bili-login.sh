@@ -3,6 +3,9 @@
 # 用法：./bili-login.sh [输出文件]
 # 默认输出路径：~/.cookies/bilibili_cookies.txt
 
+# Python 解释器（Ubuntu 默认 python3，Windows Hermes 覆盖 PYTHON=python）
+PYTHON="${PYTHON:-python3}"
+
 set -e
 
 COOKIE_FILE="${1:-$HOME/.cookies/bilibili_cookies.txt}"
@@ -57,7 +60,7 @@ echo ""
 
 # 转换格式
 echo "🔄 转换 Cookies 格式..."
-python3 "$SCRIPT_DIR/convert-bili-cookie.py" "$BILIUP_COOKIE" "$COOKIE_FILE"
+$PYTHON "$SCRIPT_DIR/convert-bili-cookie.py" "$BILIUP_COOKIE" "$COOKIE_FILE"
 
 if [[ $? -eq 0 && -f "$COOKIE_FILE" ]]; then
     # 限制文件权限：仅所有者可读写
