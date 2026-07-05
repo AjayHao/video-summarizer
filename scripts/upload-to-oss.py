@@ -27,7 +27,7 @@ import json
 import argparse
 from pathlib import Path
 from dotenv import load_dotenv
-import env_helper  # 统一初始化 AGENT_HOME + 加载 .env
+import config  # 统一初始化 AGENT_HOME + 加载 .env
 
 # 阿里云 OSS 配置
 ALIYUN_OSS_AK = os.getenv('ALIYUN_OSS_AK')

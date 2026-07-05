@@ -5,40 +5,9 @@
 
 set -e
 
-# Python 解释器（Ubuntu 默认 python3，Windows Hermes 覆盖 PYTHON=python）
-PYTHON="${PYTHON:-python3}"
-
-# ====== $AGENT_HOME 归一入口 ======
-if [ -z "$AGENT_HOME" ]; then
-    if [ -n "$HERMES_HOME" ]; then
-        export AGENT_HOME="$HERMES_HOME"
-    elif [ -d "$HOME/.hermes" ]; then
-        export AGENT_HOME="$HOME/.hermes"
-    elif [ -d "$HOME/.openclaw" ]; then
-        export AGENT_HOME="$HOME/.openclaw"
-    else
-        export AGENT_HOME="$HOME/.hermes"
-    fi
-fi
-_ah() {
-    case "$(uname -s 2>/dev/null)" in
-        MINGW*|MSYS*) echo "$AGENT_HOME" | sed 's|\\|/|g' | sed 's|^\([A-Za-z]\):|/\1|' ;;
-        *) echo "$AGENT_HOME" ;;
-    esac
-}
-
-# ====== 跨平台临时目录 ======
-case "$(uname -s 2>/dev/null)" in
-    MINGW*|MSYS*)
-        # Windows: 使用原生路径（Python 可识别），反斜杠统一转正斜杠
-        TMPDIR=$(cygpath -w "${TEMP:-/tmp}" 2>/dev/null | sed 's|\\|/|g')
-        ;;
-    *)
-        TMPDIR="/tmp"
-        ;;
-esac
-
-# ============== 错误处理与日志 ==============
+# 加载统一配置（AGENT_HOME / PYTHON / TMPDIR / _ah）
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/config.sh"
 
 # 日志级别函数（ERROR_LOG 为空时不写入文件）
 log_info() { echo "ℹ️  $*"; if [[ -n "$ERROR_LOG" ]]; then echo "[INFO] $(date '+%Y-%m-%d %H:%M:%S') $*" >> "$ERROR_LOG" 2>/dev/null; fi; }
@@ -66,8 +35,6 @@ trap cleanup_on_error ERR
 VIDEO_URL=""
 OUTPUT_DIR=""
 USER_SPECIFIED_OUTPUT="false"  # 标记用户是否手动指定了输出目录
-BILI_COOKIES_FILE="$HOME/.cookies/bilibili_cookies.txt"
-DOUYIN_COOKIES_FILE="$HOME/.cookies/douyin_cookies.txt"
 COOKIES_FILE=""  # 将根据平台自动选择
 VERBOSE="false"
 KEEP_VIDEO="false"
@@ -130,8 +97,6 @@ if [[ -z "$VIDEO_URL" ]]; then
     echo "  --resume           从中断点恢复（检测进度文件）"
     exit 1
 fi
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # ============== 输入安全校验 ==============
 
@@ -303,12 +268,11 @@ fi
 mkdir -p "$OUTPUT_DIR"
 
 # 安全校验：.env 文件权限
-ENV_FILE_CHECK="$(_ah)/.env"
-if [[ -f "$ENV_FILE_CHECK" ]]; then
-    ENV_PERMS=$(stat -c '%a' "$ENV_FILE_CHECK" 2>/dev/null)
+if [[ -f "$ENV_FILE" ]]; then
+    ENV_PERMS=$(stat -c '%a' "$ENV_FILE" 2>/dev/null)
     if [[ "$ENV_PERMS" != "600" && "$ENV_PERMS" != "400" ]]; then
         log_warn ".env 文件权限不安全 (当前: $ENV_PERMS)，已修复为 600"
-        chmod 600 "$ENV_FILE_CHECK"
+        chmod 600 "$ENV_FILE"
     fi
 fi
 
@@ -345,7 +309,7 @@ fi
 # 检查环境变量（Notion 自动推送）
 if [[ "$PUSH_NOTION" == "true" ]]; then
     if [[ -z "$NOTION_VIDEO_SUMMARY_DATABASE_ID" ]]; then
-        NOTION_VIDEO_SUMMARY_DATABASE_ID=$(grep "^NOTION_VIDEO_SUMMARY_DATABASE_ID=" "$ENV_FILE_CHECK" 2>/dev/null | cut -d'=' -f2- | tr -d '"' | tr -d "'")
+        NOTION_VIDEO_SUMMARY_DATABASE_ID=$(grep "^NOTION_VIDEO_SUMMARY_DATABASE_ID=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2- | tr -d '"' | tr -d "'")
     fi
 fi
 

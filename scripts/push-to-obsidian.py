@@ -20,7 +20,7 @@ from pathlib import Path
 from datetime import datetime
 
 from dotenv import load_dotenv
-import env_helper  # 统一初始化 AGENT_HOME + 加载 .env
+import config  # 统一初始化 AGENT_HOME + 加载 .env
 
 VAULT_PATH = os.getenv('OBSIDIAN_VAULT_PATH', '')
 if not VAULT_PATH:

@@ -3,13 +3,13 @@
 # 用法：./bili-login.sh [输出文件]
 # 默认输出路径：~/.cookies/bilibili_cookies.txt
 
-# Python 解释器（Ubuntu 默认 python3，Windows Hermes 覆盖 PYTHON=python）
-PYTHON="${PYTHON:-python3}"
+# 加载统一配置
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/config.sh"
 
 set -e
 
 COOKIE_FILE="${1:-$HOME/.cookies/bilibili_cookies.txt}"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # biliup login 默认在当前工作目录保存 cookies.json
 # 使用临时目录，避免在 skill 目录内留下 cookie 文件

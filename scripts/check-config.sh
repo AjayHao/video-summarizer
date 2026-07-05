@@ -3,21 +3,9 @@
 # 用法：./check-config.sh
 # 版本：v1.1.0
 
-# ====== $AGENT_HOME 归一入口 ======
-if [ -z "$AGENT_HOME" ]; then
-    if [ -n "$HERMES_HOME" ]; then
-        export AGENT_HOME="$HERMES_HOME"
-    elif [ -d "$HOME/.hermes" ]; then
-        export AGENT_HOME="$HOME/.hermes"
-    elif [ -d "$HOME/.openclaw" ]; then
-        export AGENT_HOME="$HOME/.openclaw"
-    else
-        export AGENT_HOME="$HOME/.hermes"
-    fi
-fi
-_ah() { echo "$AGENT_HOME" | sed 's|\\|/|g' | sed 's|^\([A-Za-z]\):|/\1|'; }
-ENV_FILE="$(_ah)/.env"
+# 加载统一配置
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/config.sh"
 
 PASS=0
 FAIL=0

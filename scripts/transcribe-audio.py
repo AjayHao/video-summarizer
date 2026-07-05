@@ -18,7 +18,7 @@ import json
 import subprocess
 from pathlib import Path
 from dotenv import load_dotenv
-import env_helper  # 统一初始化 AGENT_HOME + 加载 .env
+import config  # 统一初始化 AGENT_HOME + 加载 .env
 
 # 配置
 GROQ_API_KEY = os.getenv('GROQ_API_KEY')

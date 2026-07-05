@@ -14,7 +14,7 @@ import requests
 from pathlib import Path
 from datetime import datetime
 from dotenv import load_dotenv
-import env_helper  # 统一初始化 AGENT_HOME + 加载 .env
+import config  # 统一初始化 AGENT_HOME + 加载 .env
 
 NOTION_API_KEY = os.getenv('NOTION_API_KEY')
 NOTION_DATABASE_ID = os.getenv('NOTION_VIDEO_SUMMARY_DATABASE_ID')

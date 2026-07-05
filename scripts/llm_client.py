@@ -44,8 +44,8 @@ class LLMClient:
 
     @classmethod
     def from_env(cls):
-        """从环境变量构建客户端。配置由 env_helper 统一加载。"""
-        import env_helper  # 自动初始化 AGENT_HOME + load_dotenv
+        """从环境变量构建客户端。配置由 config 模块统一加载。"""
+        import config  # 自动初始化 AGENT_HOME + load_dotenv
 
         api_key = os.getenv('LLM_API_KEY', '').strip()
         base_url = os.getenv('LLM_BASE_URL', '').strip()

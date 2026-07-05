@@ -3,20 +3,13 @@
 # 用法：./download-audio.sh <视频 URL> [输出文件]
 
 # Python 解释器（Ubuntu 默认 python3，Windows Hermes 覆盖 PYTHON=python）
-PYTHON="${PYTHON:-python3}"
+# 加载统一配置
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/config.sh"
+
 set -e
 
 VIDEO_URL="$1"
-# 跨平台临时目录
-case "$(uname -s 2>/dev/null)" in
-    MINGW*|MSYS*)
-        TMPDIR=$(cygpath -w "${TEMP:-/tmp}" 2>/dev/null | sed 's|\\|/|g')
-        ;;
-    *)
-        TMPDIR="/tmp"
-        ;;
-esac
-
 OUTPUT_FILE="${2:-$TMPDIR/audio.mp3}"
 
 # 输入校验
