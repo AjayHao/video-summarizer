@@ -1,9 +1,9 @@
 # Video Summarizer
 
-🎬 将 B 站/YouTube/小红书/抖音视频转换为结构化 Notion 总结
+🎬 将 B 站/YouTube/小红书/抖音视频转换为结构化总结，推送到 Obsidian + Notion
 
 **版本**: 1.1.0  
-**发布**: 2026-06-22  
+**发布**: 2026-06-23  
 **许可**: MIT
 
 ---

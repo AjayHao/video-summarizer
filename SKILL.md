@@ -1,6 +1,6 @@
 ---
 name: video-summarizer
-description: "将 B 站/YouTube/小红书/抖音视频转换为结构化 Notion 总结文档，自动上传截图，一键推送 Notion"
+description: "将 B 站/YouTube/小红书/抖音视频转换为结构化总结，推送到 Obsidian 本地知识库 + Notion 云端"
 metadata:
   {
     "hermes":
@@ -46,7 +46,7 @@ metadata:
 将 B 站/YouTube/小红书/抖音视频转换为结构化 Notion 总结文档，自动上传截图，一键推送 Notion。
 
 **版本**: 1.1.0  
-**发布**: 2026-06-22  
+**发布**: 2026-06-23
 **许可**: MIT  
 **作者**: Ajay Hao
 

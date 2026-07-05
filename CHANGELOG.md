@@ -7,36 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.1.0] - 2026-06-22
+## [1.1.0] - 2026-06-23
 
 ### 🏗️ 架构优化
 
-- **品牌/路径去硬编码**：所有脚本优先读取 `$AGENT_HOME/.env`，fallback `$HERMES_HOME/.env` → `~/.hermes/.env` → `~/.openclaw/.env`
-- **文档拆分**：SKILL.md 从 588 行精简至 ~290 行（-51%），安全/平台/故障排查拆分到 `references/`
-- **代码重构**：`push-to-notion.py` 四平台分支 → 4 个公共函数（`_extract_title_common` / `_extract_note` / `_extract_tags` / `_extract_author`），1010→842 行（-17%）
+- **`$AGENT_HOME` 归一**：新增 `env_helper.py`（Python 端）和 Shell 端入口，所有脚本只读 `$AGENT_HOME/.env`，自动从 `$HERMES_HOME` → `~/.hermes/` → `~/.openclaw/` 推断
+- **文档拆分**：SKILL.md 588→322 行（-45%），安全/平台/故障排查拆分到 `references/`
+- **代码重构**：`push-to-notion.py` 四平台分支 → 4 个公共函数，1010→842 行（-17%）
 
-### 🪟 Windows 兼容
+### 🔧 交叉平台兼容
 
-- **临时路径**：`upload-to-oss.py` 使用 `tempfile.gettempdir()` 替代硬编码 `/tmp/`
-- **安装指引**：README 新增 Windows Chocolatey 安装命令
-- **输出目录**：`video-summarize.sh` 在 Git Bash/MSYS 下自动使用 `%TEMP%`
-
-### 📝 文档一致性
-
-- **README.md** 更新至 v1.1.0，环境变量示例从 `DASHSCOPE_API_KEY` 改为 `LLM_API_KEY + LLM_BASE_URL + LLM_MODEL`
-- **templates/README.md** 变量名表与实际模板完全对齐
-- **全项目版本号**统一至 v1.1.0
+- **`$PYTHON` 默认 `python3`**（Ubuntu 标准），Windows 通过 `PYTHON=python` 覆盖
+- **`$TMPDIR` 跨平台**：Windows `cygpath -w $TEMP`，Linux `/tmp`，Python 和 Shell 均可用
+- **_ah() 路径转换**：仅在 MSYS 下转换 Windows 反斜杠
+- **`-update 1` 恢复**：Windows ffmpeg 单帧输出必需参数
+- **bash 数组遍历**：`"${!ARRAY[@]}"` → C 风格 `for ((;;))`，兼容 MSYS
+- **`set +e` 保护截图循环** + `|| true` 防 ffmpeg 中断
 
 ### 📓 Obsidian 本地存储
 
-- **新增 `push-to-obsidian.py`**：将视频总结写入 Obsidian Vault，生成 YAML frontmatter（tags/platform/author/duration/source_url/date/created）
-- **存储结构**：`1-输入-收件箱/视频总结/{平台}_{视频ID}_{日期}.md` + `attachments/` 子目录
-- **`status: inbox`**：frontmatter 标记待审核，方便 Obsidian 筛选
-- **默认仅 Obsidian**：零参数即推本地，本地优先、零外部依赖
-- **高级用法**：`--notion` 双存档；`--no-obsidian` 仅抓取不存档
-- **`--no-obsidian`** / **`--no-notion`** 可分别禁用
-- **`--push`** 保留兼容（等同于 `--notion`）
-- **`check-config.sh`** 新增 Obsidian Vault 路径检查
+- **新增 `push-to-obsidian.py`**：写入 Vault，生成 YAML frontmatter（title/tags/platform/author/duration/source_url/date/created/status）
+- **存储路径**：`1-输入-收件箱/视频总结/{视频标题}.md`
+- **文件名**：使用视频标题，非平台+ID
+- **图片引用**：直接使用 OSS URL，不拷贝本地附件
+- **`status: inbox`** 标记待审核
+- **四种场景**：默认 Obsidian，`--notion` 双存档，`--no-obsidian` 仅抓取
+
+### 🐛 Bug 修复
+
+- **`python3` → `$PYTHON`**：所有 Shell 脚本统一，解决 Windows Store 存根 exit 49
+- **OSS JSON 解析**：环境变量替代字符串内插，避免 Windows 路径转义
+- **`--resume` 下 `$TEMP_SUMMARY` 未初始化**：回退默认路径
+- **`$SUBTITLE_FILE` 未初始化**：Step 7 渲染回退搜索 VTT 文件
+- **`$SCREENSHOT_URLS` 被覆盖**：修复 OSS 结果解析逻辑
 
 ### 📦 文件变更
 
