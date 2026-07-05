@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.2] - 2026-06-23
+
+### 🐛 Bug 修复
+
+- **prompt.json 路径**：`analyze-subtitles-ai.py` 中 `load_params()` 去掉 `..`，修复云端部署路径解析
+- **模板文件路径**：`load_template()` 去掉 `..`，同上
+
+### 📝 模板增强
+
+- **YAML frontmatter**：`templates/summary.md` 新增 frontmatter 块（title/source/author/link/type/tags/date/fetched/distilled），Obsidian 可正确显示 Properties，`knowledge-distill` 可识别 `distilled: false` 标记
+
+### 🏗️ 路径规范化
+
+- **Obsidian 存储路径**：`1-输入-收件箱/` → `1-收件箱/`，与 Vault 统一命名规则对齐
+
+---
+
 ## [1.1.0] - 2026-06-23
 
 ### 🏗️ 架构优化

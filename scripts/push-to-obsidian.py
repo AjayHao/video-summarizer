@@ -33,7 +33,7 @@ if not VAULT.exists():
     print(f"❌ 错误：Obsidian Vault 路径不存在：{VAULT}")
     sys.exit(1)
 
-TARGET_DIR = VAULT / '1-输入-收件箱' / '视频总结'
+TARGET_DIR = VAULT / '1-收件箱' / '视频总结'
 
 
 def load_metadata(output_dir: Path) -> dict:

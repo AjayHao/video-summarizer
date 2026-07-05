@@ -260,7 +260,7 @@ output/
 
 ```
 {Obsidian Vault}/
-└── 1-输入-收件箱/
+└── 1-收件箱/
     └── 视频总结/
         ├── bilibili_BV1xxx_20260622.md      # YAML frontmatter + status: inbox
         └── attachments/

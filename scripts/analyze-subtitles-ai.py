@@ -99,7 +99,7 @@ def extract_transcript_text(subtitles):
 
 def load_params() -> dict:
     """加载 AI 分析参数配置"""
-    params_path = os.path.join(os.path.dirname(__file__), '..', 'prompt.json')
+    params_path = os.path.join(os.path.dirname(__file__), 'prompt.json')
     try:
         with open(params_path, 'r', encoding='utf-8') as f:
             return json.load(f)
@@ -203,7 +203,7 @@ def load_screenshot_urls(urls_file: str) -> list:
 
 def load_template() -> str:
     """加载 Markdown 模板"""
-    template_path = os.path.join(os.path.dirname(__file__), '..', 'templates', 'summary.md')
+    template_path = os.path.join(os.path.dirname(__file__), 'templates', 'summary.md')
     try:
         with open(template_path, 'r', encoding='utf-8') as f:
             return f.read()
