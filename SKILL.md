@@ -6,7 +6,8 @@ metadata:
     "hermes":
       {
         "emoji": "🎬",
-        "requires": { "bins": ["ffmpeg (>=6.1)", "yt-dlp (>=2026.03.17)"], "env": ["LLM_API_KEY", "LLM_BASE_URL", "ALIYUN_OSS_AK", "ALIYUN_OSS_SK", "ALIYUN_OSS_BUCKET_ID", "ALIYUN_OSS_ENDPOINT"] },
+        "requires": { "bins": ["ffmpeg (>=6.1)", "yt-dlp (>=2026.03.17)"], "env": ["LLM_API_KEY", "LLM_BASE_URL", "LLM_MODEL", "ALIYUN_OSS_AK", "ALIYUN_OSS_SK", "ALIYUN_OSS_BUCKET_ID", "ALIYUN_OSS_ENDPOINT"] },
+        "optional_env": ["OBSIDIAN_VAULT_PATH", "NOTION_API_KEY", "NOTION_VIDEO_SUMMARY_DATABASE_ID", "GROQ_API_KEY", "WHISPER_MODEL"],
         "install":
           [
             {
