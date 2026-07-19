@@ -9,7 +9,7 @@ push-to-obsidian.py - 将视频总结写入 Obsidian Vault
 3. 写入 Vault：1-输入-收件箱/视频总结/
 4. 图片引用保留 OSS URL，不拷贝本地附件
 
-版本：v1.1.0
+版本：v1.1.3
 """
 
 import sys

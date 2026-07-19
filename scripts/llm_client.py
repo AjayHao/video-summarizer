@@ -9,7 +9,7 @@
     client = LLMClient.from_env()
     result = client.chat(messages=[{'role': 'user', 'content': '你好'}])
 
-版本：v1.1.0
+版本：v1.1.3
 """
 
 import os

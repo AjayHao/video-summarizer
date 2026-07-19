@@ -1,7 +1,7 @@
 #!/bin/bash
 # check-config.sh - 检查 video-summarizer 配置是否就绪
 # 用法：./check-config.sh
-# 版本：v1.1.0
+# 版本：v1.1.3
 
 # 加载统一配置
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

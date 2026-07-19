@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.3] - 2026-06-23
+
+### 📋 元数据
+
+- **metadata 补全**：`requires.env` 增加 `LLM_MODEL`，新增 `optional_env` 字段（OBSIDIAN_VAULT_PATH / NOTION_API_KEY / NOTION_VIDEO_SUMMARY_DATABASE_ID / GROQ_API_KEY / WHISPER_MODEL）
+
+---
+
 ## [1.1.2] - 2026-06-23
 
 ### 🐛 Bug 修复
